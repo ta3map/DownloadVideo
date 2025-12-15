@@ -85,9 +85,9 @@ async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         const data = await response.json();
-        downloadFolderInput.value = data.download_folder || 'Не указана';
+        downloadFolderInput.value = data.download_folder || 'Not specified';
     } catch (error) {
-        console.error('Ошибка загрузки конфигурации:', error);
+        console.error('Error loading config:', error);
         logErrorToBackend('loadConfig', error.message, error.stack, new Date().toISOString());
     }
 }
@@ -123,17 +123,17 @@ function handleAudioOnlyChange() {
 async function handleFetchFormats() {
     const url = urlInput.value.trim();
     if (!url) {
-        showStatus('Введите URL видео!', 'error');
+        showStatus('Enter video URL!', 'error');
         return;
     }
 
     if (audioOnlyCheckbox.checked) {
-        showStatus('Режим "Только аудио" выбран. Форматы не нужны.', 'info');
+        showStatus('Audio only mode selected. Formats not needed.', 'info');
         return;
     }
 
     fetchFormatsBtn.disabled = true;
-    showStatus('Получение форматов...', 'info');
+    showStatus('Fetching formats...', 'info');
 
     try {
         const response = await fetch('/api/fetch-formats', {
@@ -146,7 +146,7 @@ async function handleFetchFormats() {
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error || 'Ошибка получения форматов');
+            throw new Error(error.error || 'Error fetching formats');
         }
 
         const data = await response.json();
@@ -155,7 +155,7 @@ async function handleFetchFormats() {
         // Проверяем результат каждые 500мс
         checkFormatsResult();
     } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
+        showStatus('Error: ' + error.message, 'error');
         fetchFormatsBtn.disabled = false;
         logErrorToBackend('fetchFormats', error.message, error.stack, new Date().toISOString());
     }
@@ -185,7 +185,7 @@ async function checkFormatsResult() {
                 formatsSelect.appendChild(option);
             });
             formatsSection.style.display = 'block';
-            showStatus(`Форматы получены для: ${data.title || 'видео'}`, 'success');
+            showStatus(`Formats fetched for: ${data.title || 'video'}`, 'success');
             fetchFormatsBtn.disabled = false;
             currentFetchTaskId = null;
         } else if (data.status === 'fetching') {
@@ -193,7 +193,7 @@ async function checkFormatsResult() {
             setTimeout(checkFormatsResult, 500);
         }
     } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
+        showStatus('Error: ' + error.message, 'error');
         fetchFormatsBtn.disabled = false;
         currentFetchTaskId = null;
         logErrorToBackend('checkFormatsResult', error.message, error.stack, new Date().toISOString());
@@ -216,206 +216,160 @@ function showStatus(message, type) {
 
 // Сохранение UI состояния
 async function saveUIState() {
-    try {
-        const state = {
-            url: urlInput.value,
-            format_id: formatsSelect.value,
-            audio_only: audioOnlyCheckbox.checked,
-            download_folder: downloadFolderInput.value,
-            formats_visible: formatsSection.style.display !== 'none'
-        };
-        await fetch('/api/ui-state', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(state)
-        });
-    } catch (error) {
-        console.error('Ошибка сохранения UI состояния:', error);
-    }
+    const state = {
+        url: urlInput.value,
+        format_id: formatsSelect.value,
+        audio_only: audioOnlyCheckbox.checked,
+        download_folder: downloadFolderInput.value,
+        formats_visible: formatsSection.style.display !== 'none'
+    };
+    await fetch('/api/ui-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+    });
 }
 
 // Загрузка UI состояния
 async function loadUIState() {
-    try {
-        const response = await fetch('/api/ui-state');
-        const state = await response.json();
-        
-        if (state.url) urlInput.value = state.url;
-        if (state.format_id) formatsSelect.value = state.format_id;
-        if (state.audio_only !== undefined) audioOnlyCheckbox.checked = state.audio_only === 'true';
-        if (state.download_folder) downloadFolderInput.value = state.download_folder;
-        if (state.formats_visible === 'true') {
-            formatsSection.style.display = 'block';
-        }
-        if (state.audio_only === 'true') {
-            handleAudioOnlyChange();
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки UI состояния:', error);
-    }
+    const response = await fetch('/api/ui-state');
+    const state = await response.json();
+    
+    if (state.url) urlInput.value = state.url;
+    if (state.format_id) formatsSelect.value = state.format_id;
+    if (state.audio_only === 'true') audioOnlyCheckbox.checked = true;
+    if (state.download_folder) downloadFolderInput.value = state.download_folder;
+    if (state.formats_visible === 'true') formatsSection.style.display = 'block';
+    if (state.audio_only === 'true') handleAudioOnlyChange();
 }
 
 // Добавление в очередь
 async function handleAddToQueue() {
     const url = urlInput.value.trim();
     if (!url) {
-        showStatus('Введите URL видео!', 'error');
+        showStatus('Enter video URL!', 'error');
         return;
     }
 
     const audioOnly = audioOnlyCheckbox.checked;
-    let formatId = null;
-    let title = '';
-
-    if (!audioOnly) {
-        formatId = formatsSelect.value;
-        if (!formatId) {
-            showStatus('Выберите формат!', 'error');
-            return;
-        }
+    const formatId = audioOnly ? null : formatsSelect.value;
+    
+    if (!audioOnly && !formatId) {
+        showStatus('Select a format!', 'error');
+        return;
     }
 
-    try {
-        const response = await fetch('/api/queue/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url,
-                title,
-                format_id: formatId,
-                audio_only: audioOnly,
-                download_folder: downloadFolderInput.value
-            })
-        });
+    await fetch('/api/queue/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            url,
+            title: '',
+            format_id: formatId,
+            audio_only: audioOnly,
+            download_folder: downloadFolderInput.value
+        })
+    });
 
-        if (!response.ok) {
-            throw new Error('Ошибка добавления в очередь');
-        }
-
-        showStatus('Добавлено в очередь', 'success');
-        loadQueue();
-        queueSection.style.display = 'block';
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-    }
+    showStatus('Added to queue', 'success');
+    loadQueue();
+    queueSection.style.display = 'block';
 }
 
 // Загрузка очереди
 async function loadQueue() {
-    try {
-        const response = await fetch('/api/queue/list');
-        const data = await response.json();
+    const response = await fetch('/api/queue/list');
+    const data = await response.json();
 
-        queueList.innerHTML = '';
+    queueList.innerHTML = '';
 
-        if (data.queue && data.queue.length > 0) {
-            data.queue.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'queue-item';
-                
-                const info = document.createElement('div');
-                info.className = 'queue-item-info';
-                
-                const title = document.createElement('div');
-                title.className = 'queue-item-title';
-                title.textContent = item.title || item.url;
-                
-                const status = document.createElement('div');
-                status.className = 'queue-item-status';
-                status.textContent = `Статус: ${item.status}`;
-                if (item.progress !== undefined) {
-                    status.textContent += ` (${Math.round(item.progress)}%)`;
-                }
-                
-                info.appendChild(title);
-                info.appendChild(status);
-                div.appendChild(info);
-                queueList.appendChild(div);
-            });
-            queueSection.style.display = 'block';
-        } else {
-            queueSection.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки очереди:', error);
+    if (data.queue.length > 0) {
+        data.queue.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'queue-item';
+            
+            const info = document.createElement('div');
+            info.className = 'queue-item-info';
+            
+            const title = document.createElement('div');
+            title.className = 'queue-item-title';
+            title.textContent = item.title || item.url;
+            
+            const status = document.createElement('div');
+            status.className = 'queue-item-status';
+            status.textContent = `Status: ${item.status}`;
+            if (item.progress !== undefined) {
+                status.textContent += ` (${Math.round(item.progress)}%)`;
+            }
+            
+            info.appendChild(title);
+            info.appendChild(status);
+            div.appendChild(info);
+            queueList.appendChild(div);
+        });
+        queueSection.style.display = 'block';
+    } else {
+        queueSection.style.display = 'none';
     }
 }
 
 // Запуск очереди
 async function handleQueueStart() {
-    try {
-        await fetch('/api/queue/start', { method: 'POST' });
-        showStatus('Загрузка запущена', 'success');
-        loadQueue();
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-    }
+    await fetch('/api/queue/start', { method: 'POST' });
+    showStatus('Download started', 'success');
+    loadQueue();
 }
 
 // Пауза очереди
 async function handleQueuePause() {
-    try {
-        const isPaused = queuePauseBtn.textContent === 'Продолжить';
-        const endpoint = isPaused ? 'resume' : 'pause';
-        await fetch(`/api/queue/${endpoint}`, { method: 'POST' });
-        queuePauseBtn.textContent = isPaused ? 'Пауза' : 'Продолжить';
-        showStatus(isPaused ? 'Загрузка возобновлена' : 'Загрузка приостановлена', 'info');
-        loadQueue();
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-    }
+    const isPaused = queuePauseBtn.textContent === 'Resume';
+    const endpoint = isPaused ? 'resume' : 'pause';
+    await fetch(`/api/queue/${endpoint}`, { method: 'POST' });
+    queuePauseBtn.textContent = isPaused ? 'Pause' : 'Resume';
+    showStatus(isPaused ? 'Download resumed' : 'Download paused', 'info');
+    loadQueue();
 }
 
 // Остановка очереди
 async function handleQueueStop() {
-    try {
-        await fetch('/api/queue/stop', { method: 'POST' });
-        showStatus('Загрузка остановлена', 'info');
-        loadQueue();
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-    }
+    await fetch('/api/queue/stop', { method: 'POST' });
+    showStatus('Download stopped', 'info');
+    loadQueue();
 }
 
 
 // Загрузка истории
 async function loadHistory() {
-    try {
-        const response = await fetch('/api/history');
-        const data = await response.json();
+    const response = await fetch('/api/history');
+    const data = await response.json();
 
-        historyList.innerHTML = '';
+    historyList.innerHTML = '';
 
-        if (data.history && data.history.length > 0) {
-            data.history.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'history-item';
+    if (data.history.length > 0) {
+        data.history.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'history-item';
 
-                const info = document.createElement('div');
-                info.className = 'history-item-info';
+            const info = document.createElement('div');
+            info.className = 'history-item-info';
 
-                const title = document.createElement('div');
-                title.className = 'history-item-title';
-                title.textContent = item.title || item.url;
+            const title = document.createElement('div');
+            title.className = 'history-item-title';
+            title.textContent = item.title || item.url;
 
-                const details = document.createElement('div');
-                details.className = 'history-item-details';
-                const statusText = item.status === 'finished' ? 'Завершено' : 
-                                 item.status === 'error' ? 'Ошибка' : 'Отменено';
-                details.textContent = `${statusText} | ${new Date(item.created_at).toLocaleString()}`;
+            const details = document.createElement('div');
+            details.className = 'history-item-details';
+            const statusText = item.status === 'finished' ? 'Completed' : 
+                             item.status === 'error' ? 'Error' : 'Cancelled';
+            details.textContent = `${statusText} | ${new Date(item.created_at).toLocaleString()}`;
 
-                info.appendChild(title);
-                info.appendChild(details);
-                div.appendChild(info);
-                historyList.appendChild(div);
-            });
-        } else {
-            historyList.innerHTML = '<p style="color: #718096; text-align: center;">История пуста</p>';
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки истории:', error);
+            info.appendChild(title);
+            info.appendChild(details);
+            div.appendChild(info);
+            historyList.appendChild(div);
+        });
+    } else {
+        historyList.innerHTML = '<p style="color: #718096; text-align: center;">History is empty</p>';
     }
 }
 

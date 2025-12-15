@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from flask import Flask, render_template, request, jsonify, Response, send_file
+from flask import Flask, render_template, request, jsonify
 import threading
 import time
 import json
@@ -128,14 +128,15 @@ def start_queue_download(queue_id, queue_item):
     title = queue_item.get('title', '')
     
     if not title:
-        try:
-            result = get_formats(url)
-            title = result.get('title', '')
-        except:
-            pass
+        result = get_formats(url)
+        title = result.get('title', '')
     
     task_id = str(uuid.uuid4())
     db.update_queue_item(queue_id, status='downloading', task_id=task_id)
+    
+    paused_flag = {'value': False}
+    cancelled_flag = {'value': False}
+    final_file = ['']
     
     with active_tasks_lock:
         active_tasks[task_id] = {
@@ -146,29 +147,20 @@ def start_queue_download(queue_id, queue_item):
             'audio_only': audio_only,
             'progress': 0,
             'paused': False,
-            'cancelled': False,
-            'final_file': None,
-            'error': None,
-            'paused_flag': {'value': False},
-            'cancelled_flag': {'value': False}
+            'paused_flag': paused_flag,
+            'cancelled_flag': cancelled_flag
         }
     
     def progress_callback(percent):
         with active_tasks_lock:
-            if task_id in active_tasks:
-                active_tasks[task_id]['progress'] = percent
+            active_tasks[task_id]['progress'] = percent
     
     def final_file_callback(filename):
-        with active_tasks_lock:
-            if task_id in active_tasks:
-                active_tasks[task_id]['final_file'] = filename
+        final_file[0] = filename
     
-    paused_flag = active_tasks[task_id]['paused_flag']
-    cancelled_flag = active_tasks[task_id]['cancelled_flag']
     logger = CustomLogger(final_file_callback=final_file_callback)
     
     def worker():
-        final_file = ''
         try:
             download_video(
                 url=url,
@@ -182,33 +174,20 @@ def start_queue_download(queue_id, queue_item):
                 final_file_callback=final_file_callback
             )
             with active_tasks_lock:
-                if task_id in active_tasks:
-                    final_file = active_tasks[task_id].get('final_file', '')
-                    if not title:
-                        title = active_tasks[task_id].get('title', '')
-                    del active_tasks[task_id]
-            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file)
+                del active_tasks[task_id]
+            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0])
             db.update_queue_item(queue_id, status='finished')
             start_next_queue_item()
         except Exception as e:
-            error_msg = str(e)
             with active_tasks_lock:
                 if task_id in active_tasks:
-                    if not title:
-                        title = active_tasks[task_id].get('title', '')
                     del active_tasks[task_id]
-            if 'cancelled' in error_msg.lower():
-                db.add_to_history(url, title, format_id, audio_only, 'cancelled', '')
-                db.update_queue_item(queue_id, status='cancelled')
-            else:
-                db.add_to_history(url, title, format_id, audio_only, 'error', '')
-                db.update_queue_item(queue_id, status='error')
+            status = 'cancelled' if 'cancelled' in str(e).lower() else 'error'
+            db.add_to_history(url, title, format_id, audio_only, status, '')
+            db.update_queue_item(queue_id, status=status)
             start_next_queue_item()
     
-    thread = threading.Thread(target=worker, daemon=True)
-    thread.start()
-    with active_tasks_lock:
-        active_tasks[task_id]['thread'] = thread
+    threading.Thread(target=worker, daemon=True).start()
 
 def start_next_queue_item():
     """Запуск следующего элемента из очереди если есть место"""
@@ -219,194 +198,6 @@ def start_next_queue_item():
     if pending:
         item = pending[0]
         start_queue_download(item['id'], item)
-
-@app.route('/api/download', methods=['POST'])
-def start_download():
-    """Запуск скачивания (старый способ, для совместимости)"""
-    data = request.json
-    url = data.get('url', '').strip()
-    format_id = data.get('format_id')
-    audio_only = data.get('audio_only', False)
-    download_folder = data.get('download_folder', DOWNLOAD_FOLDER)
-    
-    if not url:
-        return jsonify({'error': 'URL не указан'}), 400
-    
-    if not audio_only and not format_id:
-        return jsonify({'error': 'Формат не выбран'}), 400
-    
-    os.makedirs(download_folder, exist_ok=True)
-    
-    task_id = create_task()
-    update_task(task_id, status='downloading', url=url, format_id=format_id,
-                audio_only=audio_only, progress=0, paused=False, cancelled=False)
-    
-    paused_flag = {'value': False}
-    cancelled_flag = {'value': False}
-    
-    def progress_callback(percent):
-        update_task(task_id, progress=percent)
-    
-    def final_file_callback(filename):
-        update_task(task_id, final_file=filename)
-        if filename:
-            try:
-                info = get_formats(url)
-                title = info.get('title', '')
-            except:
-                title = ''
-            db.add_to_history(url, title, format_id, audio_only, 'finished', filename)
-    logger = CustomLogger(final_file_callback=final_file_callback)
-    
-    def worker():
-        try:
-            download_video(
-                url=url,
-                format_id=format_id,
-                download_folder=download_folder,
-                audio_only=audio_only,
-                progress_callback=progress_callback,
-                logger=logger,
-                paused_flag=paused_flag,
-                cancelled_flag=cancelled_flag,
-                final_file_callback=final_file_callback
-            )
-            update_task(task_id, status='finished', progress=100)
-        except Exception as e:
-            if 'cancelled' in str(e).lower():
-                log_info(f"Download cancelled for task {task_id}")
-                update_task(task_id, status='cancelled')
-                try:
-                    info = get_formats(url)
-                    title = info.get('title', '')
-                except:
-                    title = ''
-                db.add_to_history(url, title, format_id, audio_only, 'cancelled', '')
-            else:
-                log_error(f"Error downloading for task {task_id}: {e}")
-                update_task(task_id, status='error', error=str(e))
-                try:
-                    info = get_formats(url)
-                    title = info.get('title', '')
-                except:
-                    title = ''
-                db.add_to_history(url, title, format_id, audio_only, 'error', '')
-    
-    thread = threading.Thread(target=worker, daemon=True)
-    thread.start()
-    update_task(task_id, thread=thread, paused_flag=paused_flag, cancelled_flag=cancelled_flag)
-    
-    return jsonify({'task_id': task_id})
-
-
-@app.route('/api/pause/<task_id>', methods=['POST'])
-def pause_download(task_id):
-    """Пауза скачивания"""
-    task = get_task(task_id)
-    if not task:
-        return jsonify({'error': 'Задача не найдена'}), 404
-    
-    paused_flag = task.get('paused_flag')
-    if paused_flag:
-        paused_flag['value'] = True
-        update_task(task_id, paused=True, status='paused')
-        return jsonify({'status': 'paused'})
-    
-    return jsonify({'error': 'Не удалось поставить на паузу'}), 400
-
-
-@app.route('/api/resume/<task_id>', methods=['POST'])
-def resume_download(task_id):
-    """Возобновление скачивания"""
-    task = get_task(task_id)
-    if not task:
-        return jsonify({'error': 'Задача не найдена'}), 404
-    
-    paused_flag = task.get('paused_flag')
-    if paused_flag:
-        paused_flag['value'] = False
-        update_task(task_id, paused=False, status='downloading')
-        return jsonify({'status': 'downloading'})
-    
-    return jsonify({'error': 'Не удалось возобновить'}), 400
-
-
-@app.route('/api/stop/<task_id>', methods=['POST'])
-def stop_download(task_id):
-    """Остановка скачивания"""
-    task = get_task(task_id)
-    if not task:
-        return jsonify({'error': 'Задача не найдена'}), 404
-    
-    cancelled_flag = task.get('cancelled_flag')
-    if cancelled_flag:
-        cancelled_flag['value'] = True
-        update_task(task_id, cancelled=True, status='cancelled')
-        return jsonify({'status': 'cancelled'})
-    
-    return jsonify({'error': 'Не удалось остановить'}), 400
-
-
-@app.route('/api/progress/<task_id>')
-def progress_stream(task_id):
-    """SSE поток для обновления прогресса"""
-    def generate():
-        while True:
-            task = get_task(task_id)
-            if not task:
-                yield f"data: {json.dumps({'error': 'Task not found'})}\n\n"
-                break
-            
-            data = {
-                'progress': task.get('progress', 0),
-                'status': task.get('status', 'idle'),
-                'final_file': task.get('final_file'),
-                'error': task.get('error')
-            }
-            
-            yield f"data: {json.dumps(data)}\n\n"
-            
-            # Если задача завершена, прекращаем поток
-            if task['status'] in ['finished', 'error', 'cancelled']:
-                break
-            
-            time.sleep(0.5)
-    
-    return Response(generate(), mimetype='text/event-stream')
-
-
-@app.route('/api/downloads', methods=['GET'])
-def list_downloads():
-    """Список скачанных файлов"""
-    try:
-        files = []
-        if os.path.exists(DOWNLOAD_FOLDER):
-            for filename in os.listdir(DOWNLOAD_FOLDER):
-                filepath = os.path.join(DOWNLOAD_FOLDER, filename)
-                if os.path.isfile(filepath):
-                    files.append({
-                        'name': filename,
-                        'size': os.path.getsize(filepath),
-                        'path': filepath
-                    })
-        return jsonify({'files': files})
-    except Exception as e:
-        log_error(f"Error listing downloads: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/download-file/<path:filename>', methods=['GET'])
-def download_file(filename):
-    """Скачивание файла через браузер"""
-    try:
-        filepath = os.path.join(DOWNLOAD_FOLDER, filename)
-        if os.path.exists(filepath) and os.path.isfile(filepath):
-            return send_file(filepath, as_attachment=True)
-        return jsonify({'error': 'Файл не найден'}), 404
-    except Exception as e:
-        log_error(f"Error listing downloads: {e}")
-        return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -420,19 +211,10 @@ def get_config():
 @app.route('/api/log-error', methods=['POST'])
 def log_frontend_error_endpoint():
     """Логирование ошибок с фронтенда"""
-    try:
-        data = request.json
-        error_type = data.get('type', 'error')
-        message = data.get('message', '')
-        stack = data.get('stack', '')
-        timestamp = data.get('timestamp', '')
-        
-        log_frontend_error(error_type, message, stack, timestamp)
-        
-        return jsonify({'status': 'logged'})
-    except Exception as e:
-        log_error(f"Error logging frontend error: {e}")
-        return jsonify({'error': str(e)}), 500
+    data = request.json
+    log_frontend_error(data.get('type', 'error'), data.get('message', ''), 
+                      data.get('stack', ''), data.get('timestamp', ''))
+    return jsonify({'status': 'logged'})
 
 @app.route('/api/queue/add', methods=['POST'])
 def queue_add():
@@ -454,13 +236,12 @@ def queue_add():
 def queue_list():
     """Список очереди"""
     queue = db.get_queue()
-    for item in queue:
-        if item['task_id']:
-            with active_tasks_lock:
-                task = active_tasks.get(item['task_id'])
-                if task:
-                    item['progress'] = task['progress']
-                    item['paused'] = task['paused']
+    with active_tasks_lock:
+        for item in queue:
+            if item['task_id'] and item['task_id'] in active_tasks:
+                task = active_tasks[item['task_id']]
+                item['progress'] = task['progress']
+                item['paused'] = task['paused']
     return jsonify({'queue': queue})
 
 @app.route('/api/queue/start', methods=['POST'])
@@ -526,25 +307,6 @@ def ui_state():
     else:
         state = db.get_all_ui_state()
         return jsonify(state)
-
-@app.route('/api/queue/progress')
-def queue_progress_stream():
-    """SSE поток для обновления прогресса очереди"""
-    def generate():
-        while True:
-            with active_tasks_lock:
-                tasks_data = {}
-                for task_id, task in active_tasks.items():
-                    tasks_data[task_id] = {
-                        'queue_id': task['queue_id'],
-                        'progress': task['progress'],
-                        'paused': task['paused']
-                    }
-            yield f"data: {json.dumps(tasks_data)}\n\n"
-            time.sleep(0.5)
-    
-    return Response(generate(), mimetype='text/event-stream')
-
 
 def start_flask():
     """Запуск Flask в отдельном потоке"""

@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import sqlite3
-import json
-import os
-from datetime import datetime
 
 DB_PATH = 'downloads.db'
 
@@ -95,11 +92,6 @@ class Database:
         cursor.execute(f'UPDATE download_queue SET {", ".join(updates)} WHERE id = ?', values)
         self.conn.commit()
     
-    def delete_queue_item(self, queue_id):
-        cursor = self.conn.cursor()
-        cursor.execute('DELETE FROM download_queue WHERE id = ?', (queue_id,))
-        self.conn.commit()
-    
     def clear_queue(self):
         cursor = self.conn.cursor()
         cursor.execute('DELETE FROM download_queue')
@@ -116,12 +108,6 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute('INSERT OR REPLACE INTO ui_state (key, value) VALUES (?, ?)', (key, value))
         self.conn.commit()
-    
-    def load_ui_state(self, key):
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT value FROM ui_state WHERE key = ?', (key,))
-        row = cursor.fetchone()
-        return row[0] if row else None
     
     def get_all_ui_state(self):
         cursor = self.conn.cursor()

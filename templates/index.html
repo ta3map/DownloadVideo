@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,43 +11,43 @@
         <h1>Video Downloader</h1>
         
         <div class="form-group">
-            <label for="url-input">Введите URL видео:</label>
+            <label for="url-input">Enter video URL:</label>
             <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=..." />
         </div>
         
         <div class="form-group">
-            <label for="download-folder">Папка загрузки:</label>
+            <label for="download-folder">Download folder:</label>
             <input type="text" id="download-folder" />
         </div>
         
         <div class="form-group">
             <label>
                 <input type="checkbox" id="audio-only" />
-                Только аудио (mp3)
+                Audio only (mp3)
             </label>
         </div>
         
         <div class="button-group">
-            <button id="fetch-formats-btn" class="btn btn-primary">Получить форматы</button>
+            <button id="fetch-formats-btn" class="btn btn-primary">Get formats</button>
         </div>
         
         <div id="formats-section" class="formats-section" style="display: none;">
             <div class="form-group">
-                <label for="formats-select">Доступные форматы:</label>
+                <label for="formats-select">Available formats:</label>
                 <select id="formats-select" size="10"></select>
             </div>
             <div class="button-group">
-                <button id="add-to-queue-btn" class="btn btn-primary">Добавить в задание</button>
+                <button id="add-to-queue-btn" class="btn btn-primary">Add to queue</button>
             </div>
         </div>
         
         <div id="queue-section" class="queue-section" style="display: none;">
-            <h2>Задания:</h2>
+            <h2>Queue:</h2>
             <div id="queue-list" class="queue-list"></div>
             <div class="button-group">
-                <button id="queue-start-btn" class="btn btn-success">Скачать</button>
-                <button id="queue-pause-btn" class="btn btn-warning">Пауза</button>
-                <button id="queue-stop-btn" class="btn btn-danger">Остановить</button>
+                <button id="queue-start-btn" class="btn btn-success">Download</button>
+                <button id="queue-pause-btn" class="btn btn-warning">Pause</button>
+                <button id="queue-stop-btn" class="btn btn-danger">Stop</button>
             </div>
         </div>
         
@@ -61,7 +61,7 @@
         <div id="status-message" class="status-message"></div>
         
         <div id="history-section" class="history-section">
-            <h2>История скачиваний</h2>
+            <h2>Download history</h2>
             <div id="history-list" class="history-list"></div>
         </div>
     </div>
