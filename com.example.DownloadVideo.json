@@ -1,0 +1,42 @@
+{
+  "app-id": "com.example.DownloadVideo",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "47",
+  "sdk": "org.gnome.Sdk",
+  "command": "download_video",
+  "finish-args": [
+    "--share=network",
+    "--socket=x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--filesystem=home"
+  ],
+  "add-extensions": {
+    "org.gnome.Platform.ffmpeg-full": {
+      "version": "46"
+    }
+  },
+  "modules": [
+    {
+      "name": "download-video",
+      "buildsystem": "simple",
+
+      "build-options": {
+        "share-network": true
+      },
+
+      "build-commands": [
+        "pip3 install --no-cache --upgrade pip setuptools wheel",
+        "pip3 install --no-cache --prefix=/app yt_dlp",
+        "install -Dm755 download_video.py /app/bin/download_video"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "path": "download_video.py"
+        }
+      ]
+    }
+  ]
+}
+

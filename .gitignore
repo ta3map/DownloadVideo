@@ -1,0 +1,106 @@
+# Виртуальное окружение Python
+DVenv/
+venv/
+env/
+ENV/
+.venv/
+
+# Директория сборки
+build-dir/
+.flatpak-builder/
+
+# Кеш Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Распределение / упаковка
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Временные файлы
+*.tmp
+*.temp
+*.log
+*.bak
+*.swp
+
+# Конфигурационные файлы (если содержат чувствительные данные)
+# video_downloader_config.json - сохраняется в tempfile.gettempdir(), так что не нужно игнорировать
+
+# Скачанные видео (если они сохраняются в проекте)
+*.mp4
+*.mp3
+*.webm
+*.mkv
+*.avi
+*.flv
+*.mov
+
