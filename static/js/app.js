@@ -41,10 +41,10 @@ async function logErrorToBackend(type, message, stack, timestamp) {
 }
 
 // Инициализация
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     setupErrorHandling();
-    loadConfig();
-    loadUIState();
+    await loadUIState();
+    await loadConfig();
     loadHistory();
     loadQueue();
     setupEventListeners();
@@ -85,7 +85,9 @@ async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         const data = await response.json();
-        downloadFolderInput.value = data.download_folder || 'Not specified';
+        if (!downloadFolderInput.value || downloadFolderInput.value === 'Not specified') {
+            downloadFolderInput.value = data.download_folder || 'Not specified';
+        }
     } catch (error) {
         console.error('Error loading config:', error);
         logErrorToBackend('loadConfig', error.message, error.stack, new Date().toISOString());
@@ -289,13 +291,13 @@ async function loadQueue() {
 
     queueList.innerHTML = '';
 
-    let activeProgress = null;
+    let activeProgresses = [];
     if (data.queue.length > 0) {
         data.queue.forEach(item => {
             const div = document.createElement('div');
             div.className = 'queue-item';
-
-                const info = document.createElement('div');
+            
+            const info = document.createElement('div');
             info.className = 'queue-item-info';
             
             const title = document.createElement('div');
@@ -315,9 +317,7 @@ async function loadQueue() {
             status.textContent = `Status: ${statusText}`;
             if (item.progress !== undefined && item.status === 'downloading') {
                 status.textContent += ` (${Math.round(item.progress)}%)`;
-                if (activeProgress === null) {
-                    activeProgress = item.progress;
-                }
+                activeProgresses.push(item.progress);
             }
             
             info.appendChild(title);
@@ -338,20 +338,22 @@ async function loadQueue() {
         queueSection.style.display = 'none';
     }
     
-    if (activeProgress !== null) {
-        updateProgress(activeProgress);
-        } else {
+    if (activeProgresses.length > 0) {
+        const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
+        updateProgress(avgProgress);
+    } else {
         updateProgress(0);
     }
     
     const hasActiveDownloads = data.queue.some(item => item.status === 'downloading');
     if (!hasActiveDownloads) {
-        const wasUpdating = progressUpdateInterval !== null;
         stopProgressUpdate();
-        if (wasUpdating) {
-            loadHistory();
-        }
     }
+    
+    if (data.queue.length < previousQueueLength) {
+        loadHistory();
+    }
+    previousQueueLength = data.queue.length;
 }
 
 // Запуск очереди
@@ -382,9 +384,11 @@ async function handleQueueStop() {
 
 // Обновление прогресса
 let progressUpdateInterval = null;
+let previousQueueLength = 0;
 
 function startProgressUpdate() {
     if (progressUpdateInterval) return;
+    previousQueueLength = 0;
     progressUpdateInterval = setInterval(() => {
         loadQueue();
     }, 1000);
