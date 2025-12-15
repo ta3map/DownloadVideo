@@ -7,9 +7,6 @@ A simple desktop application for downloading videos from various platforms using
 - Download videos in various formats
 - Audio-only extraction (MP3)
 - Download queue with up to 3 simultaneous downloads
-- Download history tracking
-- UI state persistence
-- SQLite database for data storage
 
 ## Requirements
 

@@ -1,8 +1,10 @@
 // Глобальные переменные
 let currentFetchTaskId = null;
+let currentVideoTitle = null;
 
 // Элементы DOM
 const urlInput = document.getElementById('url-input');
+const pasteUrlBtn = document.getElementById('paste-url-btn');
 const downloadFolderInput = document.getElementById('download-folder');
 const audioOnlyCheckbox = document.getElementById('audio-only');
 const fetchFormatsBtn = document.getElementById('fetch-formats-btn');
@@ -16,6 +18,7 @@ const queuePauseBtn = document.getElementById('queue-pause-btn');
 const queueStopBtn = document.getElementById('queue-stop-btn');
 const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
+const progressSection = document.querySelector('.progress-section');
 const statusMessage = document.getElementById('status-message');
 const historyList = document.getElementById('history-list');
 const deleteModal = document.getElementById('delete-modal');
@@ -47,6 +50,7 @@ async function logErrorToBackend(type, message, stack, timestamp) {
 // Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
     setupErrorHandling();
+    progressSection.style.display = 'none';
     await loadUIState();
     await loadConfig();
     loadHistory();
@@ -100,6 +104,7 @@ async function loadConfig() {
 
 // Настройка обработчиков событий
 function setupEventListeners() {
+    pasteUrlBtn.addEventListener('click', handlePasteUrl);
     fetchFormatsBtn.addEventListener('click', handleFetchFormats);
     addToQueueBtn.addEventListener('click', handleAddToQueue);
     queueStartBtn.addEventListener('click', handleQueueStart);
@@ -126,7 +131,30 @@ function setupEventListeners() {
         saveUIState();
     });
     urlInput.addEventListener('blur', saveUIState);
+    urlInput.addEventListener('input', () => {
+        currentVideoTitle = null;
+    });
     downloadFolderInput.addEventListener('blur', saveUIState);
+}
+
+// Вставка URL из буфера обмена
+async function handlePasteUrl() {
+    try {
+        const response = await fetch('/api/clipboard/get');
+        const data = await response.json();
+        if (data.text) {
+            urlInput.value = data.text;
+            urlInput.focus();
+            currentVideoTitle = null;
+            saveUIState();
+            showStatus('URL pasted from clipboard', 'success');
+        } else {
+            showStatus('Clipboard is empty', 'info');
+        }
+    } catch (error) {
+        showStatus('Failed to get clipboard content', 'error');
+        logErrorToBackend('pasteUrl', error.message, error.stack, new Date().toISOString());
+    }
 }
 
 // Обработка изменения чекбокса "Только аудио"
@@ -148,9 +176,11 @@ async function handleFetchFormats() {
 
     if (audioOnlyCheckbox.checked) {
         showStatus('Audio only mode selected. Formats not needed.', 'info');
+        currentVideoTitle = null;
         return;
     }
-
+    
+    currentVideoTitle = null;
     fetchFormatsBtn.disabled = true;
     showStatus('Fetching formats...', 'info');
 
@@ -204,7 +234,8 @@ async function checkFormatsResult() {
                 formatsSelect.appendChild(option);
             });
             formatsSection.style.display = 'block';
-            showStatus(`Formats fetched for: ${data.title || 'video'}`, 'success');
+            currentVideoTitle = data.title || null;
+            showStatus(`Formats fetched for: ${currentVideoTitle || 'video'}`, 'success');
             fetchFormatsBtn.disabled = false;
             currentFetchTaskId = null;
         } else if (data.status === 'fetching') {
@@ -289,7 +320,7 @@ async function handleAddToQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             url,
-            title: '',
+            title: currentVideoTitle || '',
             format_id: formatId,
             audio_only: audioOnly,
             download_folder: downloadFolderInput.value
@@ -358,8 +389,9 @@ async function loadQueue() {
     if (activeProgresses.length > 0) {
         const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
         updateProgress(avgProgress);
+        progressSection.style.display = 'block';
     } else {
-        updateProgress(0);
+        progressSection.style.display = 'none';
     }
     
     const hasActiveDownloads = data.queue.some(item => item.status === 'downloading');

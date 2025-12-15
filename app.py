@@ -13,6 +13,8 @@ import platform
 from io import StringIO
 os.environ['WEBVIEW_BACKEND'] = 'qt'
 import webview
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
     CustomLogger, check_ffmpeg
@@ -340,6 +342,20 @@ def open_file():
             subprocess.Popen(['xdg-open', file_path])
         return jsonify({'status': 'opened'})
     return jsonify({'error': 'File not found'}), 404
+
+@app.route('/api/clipboard/get', methods=['GET'])
+def get_clipboard():
+    """Получение текста из буфера обмена"""
+    try:
+        app_qt = QApplication.instance()
+        if app_qt is None:
+            app_qt = QApplication([])
+        clipboard = app_qt.clipboard()
+        text = clipboard.text()
+        return jsonify({'text': text})
+    except Exception as e:
+        log_error(f"Error getting clipboard: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/open-folder', methods=['POST'])
 def open_folder():
