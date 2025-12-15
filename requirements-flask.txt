@@ -1,0 +1,7 @@
+Flask>=2.3.0
+pywebview>=4.0
+yt-dlp
+qtpy
+PyQt5
+PyQtWebEngine
+

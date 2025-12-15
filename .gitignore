@@ -88,9 +88,12 @@ Desktop.ini
 # Временные файлы
 *.tmp
 *.temp
-*.log
 *.bak
 *.swp
+
+# Логи приложения
+app.log
+app.log.*
 
 # Конфигурационные файлы (если содержат чувствительные данные)
 # video_downloader_config.json - сохраняется в tempfile.gettempdir(), так что не нужно игнорировать

@@ -73,8 +73,16 @@ def get_default_download_dir():
     system = platform.system()
     if system == "Windows":
         return os.path.join(os.environ["USERPROFILE"], "Downloads")
-    elif system == "Linux" or "Android" in platform.platform():
-        return "/storage/emulated/0/Download"
+    elif system == "Linux":
+        # Проверяем, не Android ли это
+        if "Android" in platform.platform():
+            return "/storage/emulated/0/Download"
+        # Для обычного Linux используем стандартную папку Downloads
+        home = os.environ.get("HOME", os.path.expanduser("~"))
+        downloads = os.path.join(home, "Downloads")
+        # Создаем папку, если её нет
+        os.makedirs(downloads, exist_ok=True)
+        return downloads
     else:
         return os.getcwd()
 

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Video Downloader</h1>
+        
+        <div class="form-group">
+            <label for="url-input">Введите URL видео:</label>
+            <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=..." />
+        </div>
+        
+        <div class="form-group">
+            <label for="download-folder">Папка загрузки:</label>
+            <input type="text" id="download-folder" readonly />
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="audio-only" />
+                Только аудио (mp3)
+            </label>
+        </div>
+        
+        <div class="button-group">
+            <button id="fetch-formats-btn" class="btn btn-primary">Получить форматы</button>
+        </div>
+        
+        <div id="formats-section" class="formats-section" style="display: none;">
+            <div class="form-group">
+                <label for="formats-select">Доступные форматы:</label>
+                <select id="formats-select" size="10"></select>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button id="download-btn" class="btn btn-success" disabled>Скачать</button>
+            <button id="pause-btn" class="btn btn-warning" disabled>Пауза</button>
+            <button id="stop-btn" class="btn btn-danger" disabled>Остановить</button>
+        </div>
+        
+        <div class="progress-section">
+            <div class="progress-bar-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="progress-text" class="progress-text">0%</div>
+        </div>
+        
+        <div id="status-message" class="status-message"></div>
+        
+        <div id="downloads-section" class="downloads-section">
+            <h2>Скачанные файлы</h2>
+            <div id="downloads-list" class="downloads-list"></div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
