@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHistory();
     loadQueue();
     setupEventListeners();
-    startProgressUpdate();
 });
 
 // Настройка глобальной обработки ошибок
@@ -255,8 +254,8 @@ async function handleAddToQueue() {
     const url = urlInput.value.trim();
     if (!url) {
         showStatus('Enter video URL!', 'error');
-        return;
-    }
+            return;
+        }
 
     const audioOnly = audioOnlyCheckbox.checked;
     const formatId = audioOnly ? null : formatsSelect.value;
@@ -295,8 +294,8 @@ async function loadQueue() {
         data.queue.forEach(item => {
             const div = document.createElement('div');
             div.className = 'queue-item';
-            
-            const info = document.createElement('div');
+
+                const info = document.createElement('div');
             info.className = 'queue-item-info';
             
             const title = document.createElement('div');
@@ -341,11 +340,18 @@ async function loadQueue() {
     
     if (activeProgress !== null) {
         updateProgress(activeProgress);
-    } else {
+        } else {
         updateProgress(0);
     }
     
-    loadHistory();
+    const hasActiveDownloads = data.queue.some(item => item.status === 'downloading');
+    if (!hasActiveDownloads) {
+        const wasUpdating = progressUpdateInterval !== null;
+        stopProgressUpdate();
+        if (wasUpdating) {
+            loadHistory();
+        }
+    }
 }
 
 // Запуск очереди
@@ -370,8 +376,8 @@ async function handleQueuePause() {
 async function handleQueueStop() {
     await fetch('/api/queue/stop', { method: 'POST' });
     showStatus('Download stopped', 'info');
-    loadQueue();
     stopProgressUpdate();
+    loadQueue();
 }
 
 // Обновление прогресса
@@ -381,7 +387,7 @@ function startProgressUpdate() {
     if (progressUpdateInterval) return;
     progressUpdateInterval = setInterval(() => {
         loadQueue();
-    }, 500);
+    }, 1000);
 }
 
 function stopProgressUpdate() {
@@ -423,6 +429,13 @@ async function loadHistory() {
             
             const buttonsDiv = document.createElement('div');
             buttonsDiv.className = 'history-item-buttons';
+            
+            const copyUrlBtn = document.createElement('button');
+            copyUrlBtn.className = 'action-btn';
+            copyUrlBtn.textContent = '🔗';
+            copyUrlBtn.title = 'Copy URL';
+            copyUrlBtn.onclick = () => copyHistoryUrl(item.url);
+            buttonsDiv.appendChild(copyUrlBtn);
             
             if (item.status === 'finished' && item.file_path) {
                 const openFileBtn = document.createElement('button');
@@ -485,6 +498,23 @@ async function openHistoryFolder(historyId) {
             body: JSON.stringify({ file_path: data.file_path })
         });
     }
+}
+
+// Копирование URL из истории
+function copyHistoryUrl(url) {
+    navigator.clipboard.writeText(url).then(() => {
+        showStatus('URL copied to clipboard', 'success');
+    }).catch(() => {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showStatus('URL copied to clipboard', 'success');
+    });
 }
 
 // Удаление элемента из истории
