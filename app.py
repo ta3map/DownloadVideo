@@ -176,7 +176,7 @@ def start_queue_download(queue_id, queue_item):
             with active_tasks_lock:
                 del active_tasks[task_id]
             db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0])
-            db.update_queue_item(queue_id, status='finished')
+            db.delete_queue_item(queue_id)
             start_next_queue_item()
         except Exception as e:
             with active_tasks_lock:
@@ -184,7 +184,7 @@ def start_queue_download(queue_id, queue_item):
                     del active_tasks[task_id]
             status = 'cancelled' if 'cancelled' in str(e).lower() else 'error'
             db.add_to_history(url, title, format_id, audio_only, status, '')
-            db.update_queue_item(queue_id, status=status)
+            db.delete_queue_item(queue_id)
             start_next_queue_item()
     
     threading.Thread(target=worker, daemon=True).start()
@@ -295,6 +295,25 @@ def get_history():
     """Получение истории скачиваний"""
     history = db.get_history()
     return jsonify({'history': history})
+
+@app.route('/api/history/delete/<int:history_id>', methods=['POST'])
+def delete_history_item(history_id):
+    """Удаление элемента из истории"""
+    db.delete_history_item(history_id)
+    return jsonify({'status': 'deleted'})
+
+@app.route('/api/queue/delete/<int:queue_id>', methods=['POST'])
+def delete_queue_item(queue_id):
+    """Удаление элемента из очереди"""
+    queue_item = db.get_queue_item(queue_id)
+    if queue_item and queue_item.get('task_id'):
+        task_id = queue_item['task_id']
+        with active_tasks_lock:
+            if task_id in active_tasks:
+                active_tasks[task_id]['cancelled_flag']['value'] = True
+                del active_tasks[task_id]
+    db.delete_queue_item(queue_id)
+    return jsonify({'status': 'deleted'})
 
 @app.route('/api/ui-state', methods=['GET', 'POST'])
 def ui_state():

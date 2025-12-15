@@ -74,6 +74,15 @@ class Database:
         columns = [desc[0] for desc in cursor.description]
         return [dict(zip(columns, row)) for row in rows]
     
+    def get_queue_item(self, queue_id):
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM download_queue WHERE id = ?', (queue_id,))
+        row = cursor.fetchone()
+        if row:
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, row))
+        return None
+    
     def get_pending_queue(self):
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM download_queue WHERE status = ? ORDER BY id', ('pending',))
@@ -119,4 +128,14 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute('SELECT COUNT(*) FROM download_queue WHERE status = ?', ('downloading',))
         return cursor.fetchone()[0]
+    
+    def delete_queue_item(self, queue_id):
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM download_queue WHERE id = ?', (queue_id,))
+        self.conn.commit()
+    
+    def delete_history_item(self, history_id):
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM download_history WHERE id = ?', (history_id,))
+        self.conn.commit()
 

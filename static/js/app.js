@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHistory();
     loadQueue();
     setupEventListeners();
+    startProgressUpdate();
 });
 
 // Настройка глобальной обработки ошибок
@@ -214,6 +215,12 @@ function showStatus(message, type) {
     }
 }
 
+// Обновление прогресса
+function updateProgress(percent) {
+    progressBar.style.width = percent + '%';
+    progressText.textContent = Math.round(percent) + '%';
+}
+
 // Сохранение UI состояния
 async function saveUIState() {
     const state = {
@@ -283,6 +290,7 @@ async function loadQueue() {
 
     queueList.innerHTML = '';
 
+    let activeProgress = null;
     if (data.queue.length > 0) {
         data.queue.forEach(item => {
             const div = document.createElement('div');
@@ -297,20 +305,47 @@ async function loadQueue() {
             
             const status = document.createElement('div');
             status.className = 'queue-item-status';
-            status.textContent = `Status: ${item.status}`;
-            if (item.progress !== undefined) {
+            const statusText = {
+                'pending': 'Pending',
+                'downloading': 'Downloading',
+                'paused': 'Paused',
+                'finished': 'Completed',
+                'error': 'Error',
+                'cancelled': 'Cancelled'
+            }[item.status] || item.status;
+            status.textContent = `Status: ${statusText}`;
+            if (item.progress !== undefined && item.status === 'downloading') {
                 status.textContent += ` (${Math.round(item.progress)}%)`;
+                if (activeProgress === null) {
+                    activeProgress = item.progress;
+                }
             }
             
             info.appendChild(title);
             info.appendChild(status);
             div.appendChild(info);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = 'Delete';
+            deleteBtn.onclick = () => deleteQueueItem(item.id);
+            div.appendChild(deleteBtn);
+            
             queueList.appendChild(div);
         });
         queueSection.style.display = 'block';
     } else {
         queueSection.style.display = 'none';
     }
+    
+    if (activeProgress !== null) {
+        updateProgress(activeProgress);
+    } else {
+        updateProgress(0);
+    }
+    
+    loadHistory();
 }
 
 // Запуск очереди
@@ -318,6 +353,7 @@ async function handleQueueStart() {
     await fetch('/api/queue/start', { method: 'POST' });
     showStatus('Download started', 'success');
     loadQueue();
+    startProgressUpdate();
 }
 
 // Пауза очереди
@@ -335,6 +371,24 @@ async function handleQueueStop() {
     await fetch('/api/queue/stop', { method: 'POST' });
     showStatus('Download stopped', 'info');
     loadQueue();
+    stopProgressUpdate();
+}
+
+// Обновление прогресса
+let progressUpdateInterval = null;
+
+function startProgressUpdate() {
+    if (progressUpdateInterval) return;
+    progressUpdateInterval = setInterval(() => {
+        loadQueue();
+    }, 500);
+}
+
+function stopProgressUpdate() {
+    if (progressUpdateInterval) {
+        clearInterval(progressUpdateInterval);
+        progressUpdateInterval = null;
+    }
 }
 
 
@@ -366,6 +420,14 @@ async function loadHistory() {
             info.appendChild(title);
             info.appendChild(details);
             div.appendChild(info);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = 'Delete';
+            deleteBtn.onclick = () => deleteHistoryItem(item.id);
+            div.appendChild(deleteBtn);
+            
             historyList.appendChild(div);
         });
     } else {
@@ -373,12 +435,15 @@ async function loadHistory() {
     }
 }
 
-// Форматирование размера файла
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+// Удаление элемента из очереди
+async function deleteQueueItem(queueId) {
+    await fetch(`/api/queue/delete/${queueId}`, { method: 'POST' });
+    loadQueue();
+}
+
+// Удаление элемента из истории
+async function deleteHistoryItem(historyId) {
+    await fetch(`/api/history/delete/${historyId}`, { method: 'POST' });
+    loadHistory();
 }
 
