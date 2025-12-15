@@ -1,6 +1,4 @@
 // Глобальные переменные
-let currentTaskId = null;
-let progressEventSource = null;
 let currentFetchTaskId = null;
 
 // Элементы DOM
@@ -10,13 +8,16 @@ const audioOnlyCheckbox = document.getElementById('audio-only');
 const fetchFormatsBtn = document.getElementById('fetch-formats-btn');
 const formatsSection = document.getElementById('formats-section');
 const formatsSelect = document.getElementById('formats-select');
-const downloadBtn = document.getElementById('download-btn');
-const pauseBtn = document.getElementById('pause-btn');
-const stopBtn = document.getElementById('stop-btn');
+const addToQueueBtn = document.getElementById('add-to-queue-btn');
+const queueSection = document.getElementById('queue-section');
+const queueList = document.getElementById('queue-list');
+const queueStartBtn = document.getElementById('queue-start-btn');
+const queuePauseBtn = document.getElementById('queue-pause-btn');
+const queueStopBtn = document.getElementById('queue-stop-btn');
 const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
 const statusMessage = document.getElementById('status-message');
-const downloadsList = document.getElementById('downloads-list');
+const historyList = document.getElementById('history-list');
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -43,7 +44,9 @@ async function logErrorToBackend(type, message, stack, timestamp) {
 document.addEventListener('DOMContentLoaded', () => {
     setupErrorHandling();
     loadConfig();
-    loadDownloads();
+    loadUIState();
+    loadHistory();
+    loadQueue();
     setupEventListeners();
 });
 
@@ -92,23 +95,27 @@ async function loadConfig() {
 // Настройка обработчиков событий
 function setupEventListeners() {
     fetchFormatsBtn.addEventListener('click', handleFetchFormats);
-    downloadBtn.addEventListener('click', handleDownload);
-    pauseBtn.addEventListener('click', handlePause);
-    stopBtn.addEventListener('click', handleStop);
-    audioOnlyCheckbox.addEventListener('change', handleAudioOnlyChange);
-    formatsSelect.addEventListener('change', () => {
-        downloadBtn.disabled = false;
+    addToQueueBtn.addEventListener('click', handleAddToQueue);
+    queueStartBtn.addEventListener('click', handleQueueStart);
+    queuePauseBtn.addEventListener('click', handleQueuePause);
+    queueStopBtn.addEventListener('click', handleQueueStop);
+    audioOnlyCheckbox.addEventListener('change', () => {
+        handleAudioOnlyChange();
+        saveUIState();
     });
+    formatsSelect.addEventListener('change', () => {
+        saveUIState();
+    });
+    urlInput.addEventListener('blur', saveUIState);
+    downloadFolderInput.addEventListener('blur', saveUIState);
 }
 
 // Обработка изменения чекбокса "Только аудио"
 function handleAudioOnlyChange() {
     if (audioOnlyCheckbox.checked) {
         formatsSection.style.display = 'none';
-        downloadBtn.disabled = false;
     } else {
         formatsSection.style.display = 'block';
-        downloadBtn.disabled = formatsSelect.selectedIndex === -1;
     }
 }
 
@@ -193,201 +200,6 @@ async function checkFormatsResult() {
     }
 }
 
-// Запуск скачивания
-async function handleDownload() {
-    const url = urlInput.value.trim();
-    if (!url) {
-        showStatus('Введите URL видео!', 'error');
-        return;
-    }
-
-    const audioOnly = audioOnlyCheckbox.checked;
-    let formatId = null;
-
-    if (!audioOnly) {
-        formatId = formatsSelect.value;
-        if (!formatId) {
-            showStatus('Выберите формат!', 'error');
-            return;
-        }
-    }
-
-    downloadBtn.disabled = true;
-    pauseBtn.disabled = false;
-    stopBtn.disabled = false;
-    fetchFormatsBtn.disabled = true;
-    urlInput.disabled = true;
-    audioOnlyCheckbox.disabled = true;
-    formatsSelect.disabled = true;
-
-    showStatus('Запуск скачивания...', 'info');
-    resetProgress();
-
-    try {
-        const response = await fetch('/api/download', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                url,
-                format_id: formatId,
-                audio_only: audioOnly,
-                download_folder: downloadFolderInput.value
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка запуска скачивания');
-        }
-
-        const data = await response.json();
-        currentTaskId = data.task_id;
-
-        // Подключаемся к SSE потоку прогресса
-        connectProgressStream();
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-        resetControls();
-        logErrorToBackend('handleDownload', error.message, error.stack, new Date().toISOString());
-    }
-}
-
-// Подключение к SSE потоку прогресса
-function connectProgressStream() {
-    if (progressEventSource) {
-        progressEventSource.close();
-    }
-
-    progressEventSource = new EventSource(`/api/progress/${currentTaskId}`);
-
-    progressEventSource.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-
-            if (data.error) {
-                showStatus('Ошибка: ' + data.error, 'error');
-                logErrorToBackend('SSE_message_error', data.error, '', new Date().toISOString());
-                progressEventSource.close();
-                resetControls();
-                return;
-            }
-
-        updateProgress(data.progress || 0);
-
-        if (data.status === 'finished') {
-            showStatus('Скачивание завершено!', 'success');
-            progressEventSource.close();
-            resetControls();
-            loadDownloads();
-        } else if (data.status === 'error') {
-            const errorMsg = data.error || 'Неизвестная ошибка';
-            showStatus('Ошибка скачивания: ' + errorMsg, 'error');
-            logErrorToBackend('download_error', errorMsg, '', new Date().toISOString());
-            progressEventSource.close();
-            resetControls();
-        } else if (data.status === 'cancelled') {
-            showStatus('Скачивание отменено', 'info');
-            progressEventSource.close();
-            resetControls();
-        } else if (data.status === 'paused') {
-            pauseBtn.textContent = 'Продолжить';
-            showStatus('Скачивание приостановлено', 'info');
-        } else if (data.status === 'downloading') {
-            pauseBtn.textContent = 'Пауза';
-        }
-        } catch (error) {
-            logErrorToBackend('SSE_parse_error', error.message, error.stack, new Date().toISOString());
-            console.error('Ошибка парсинга SSE данных:', error, event.data);
-        }
-    };
-
-    progressEventSource.onerror = (error) => {
-        logErrorToBackend('SSE_error', 'EventSource error', error?.stack || '', new Date().toISOString());
-        progressEventSource.close();
-    };
-}
-
-// Обновление прогресса
-function updateProgress(percent) {
-    progressBar.style.width = percent + '%';
-    progressText.textContent = Math.round(percent) + '%';
-}
-
-// Сброс прогресса
-function resetProgress() {
-    updateProgress(0);
-}
-
-// Пауза/продолжение
-async function handlePause() {
-    if (!currentTaskId) return;
-
-    const isPaused = pauseBtn.textContent === 'Продолжить';
-    const endpoint = isPaused ? 'resume' : 'pause';
-
-    try {
-        const response = await fetch(`/api/${endpoint}/${currentTaskId}`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка');
-        }
-
-        if (isPaused) {
-            pauseBtn.textContent = 'Пауза';
-            showStatus('Скачивание возобновлено', 'info');
-        } else {
-            pauseBtn.textContent = 'Продолжить';
-            showStatus('Скачивание приостановлено', 'info');
-        }
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-        logErrorToBackend('handlePause', error.message, error.stack, new Date().toISOString());
-    }
-}
-
-// Остановка
-async function handleStop() {
-    if (!currentTaskId) return;
-
-    try {
-        const response = await fetch(`/api/stop/${currentTaskId}`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка');
-        }
-
-        if (progressEventSource) {
-            progressEventSource.close();
-        }
-
-        showStatus('Скачивание остановлено', 'info');
-        resetControls();
-    } catch (error) {
-        showStatus('Ошибка: ' + error.message, 'error');
-        logErrorToBackend('handleStop', error.message, error.stack, new Date().toISOString());
-    }
-}
-
-// Сброс элементов управления
-function resetControls() {
-    downloadBtn.disabled = false;
-    pauseBtn.disabled = true;
-    stopBtn.disabled = true;
-    fetchFormatsBtn.disabled = false;
-    urlInput.disabled = false;
-    audioOnlyCheckbox.disabled = false;
-    formatsSelect.disabled = false;
-    pauseBtn.textContent = 'Пауза';
-    currentTaskId = null;
-}
 
 // Показать статус
 function showStatus(message, type) {
@@ -402,55 +214,208 @@ function showStatus(message, type) {
     }
 }
 
-// Загрузка списка скачанных файлов
-async function loadDownloads() {
+// Сохранение UI состояния
+async function saveUIState() {
     try {
-        const response = await fetch('/api/downloads');
-        const data = await response.json();
+        const state = {
+            url: urlInput.value,
+            format_id: formatsSelect.value,
+            audio_only: audioOnlyCheckbox.checked,
+            download_folder: downloadFolderInput.value,
+            formats_visible: formatsSection.style.display !== 'none'
+        };
+        await fetch('/api/ui-state', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(state)
+        });
+    } catch (error) {
+        console.error('Ошибка сохранения UI состояния:', error);
+    }
+}
 
-        if (data.error) {
-            console.error('Ошибка загрузки файлов:', data.error);
-            return;
+// Загрузка UI состояния
+async function loadUIState() {
+    try {
+        const response = await fetch('/api/ui-state');
+        const state = await response.json();
+        
+        if (state.url) urlInput.value = state.url;
+        if (state.format_id) formatsSelect.value = state.format_id;
+        if (state.audio_only !== undefined) audioOnlyCheckbox.checked = state.audio_only === 'true';
+        if (state.download_folder) downloadFolderInput.value = state.download_folder;
+        if (state.formats_visible === 'true') {
+            formatsSection.style.display = 'block';
         }
-
-        downloadsList.innerHTML = '';
-
-        if (data.files && data.files.length > 0) {
-            data.files.forEach(file => {
-                const item = document.createElement('div');
-                item.className = 'download-item';
-
-                const info = document.createElement('div');
-                info.className = 'download-item-info';
-
-                const name = document.createElement('div');
-                name.className = 'download-item-name';
-                name.textContent = file.name;
-
-                const size = document.createElement('div');
-                size.className = 'download-item-size';
-                size.textContent = formatFileSize(file.size);
-
-                info.appendChild(name);
-                info.appendChild(size);
-
-                const btn = document.createElement('button');
-                btn.className = 'download-item-btn';
-                btn.textContent = 'Скачать';
-                btn.addEventListener('click', () => {
-                    window.open(`/api/download-file/${encodeURIComponent(file.name)}`, '_blank');
-                });
-
-                item.appendChild(info);
-                item.appendChild(btn);
-                downloadsList.appendChild(item);
-            });
-        } else {
-            downloadsList.innerHTML = '<p style="color: #718096; text-align: center;">Нет скачанных файлов</p>';
+        if (state.audio_only === 'true') {
+            handleAudioOnlyChange();
         }
     } catch (error) {
-        console.error('Ошибка загрузки файлов:', error);
-        logErrorToBackend('loadDownloads', error.message, error.stack, new Date().toISOString());
+        console.error('Ошибка загрузки UI состояния:', error);
+    }
+}
+
+// Добавление в очередь
+async function handleAddToQueue() {
+    const url = urlInput.value.trim();
+    if (!url) {
+        showStatus('Введите URL видео!', 'error');
+        return;
+    }
+
+    const audioOnly = audioOnlyCheckbox.checked;
+    let formatId = null;
+    let title = '';
+
+    if (!audioOnly) {
+        formatId = formatsSelect.value;
+        if (!formatId) {
+            showStatus('Выберите формат!', 'error');
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch('/api/queue/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url,
+                title,
+                format_id: formatId,
+                audio_only: audioOnly,
+                download_folder: downloadFolderInput.value
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка добавления в очередь');
+        }
+
+        showStatus('Добавлено в очередь', 'success');
+        loadQueue();
+        queueSection.style.display = 'block';
+    } catch (error) {
+        showStatus('Ошибка: ' + error.message, 'error');
+    }
+}
+
+// Загрузка очереди
+async function loadQueue() {
+    try {
+        const response = await fetch('/api/queue/list');
+        const data = await response.json();
+
+        queueList.innerHTML = '';
+
+        if (data.queue && data.queue.length > 0) {
+            data.queue.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'queue-item';
+                
+                const info = document.createElement('div');
+                info.className = 'queue-item-info';
+                
+                const title = document.createElement('div');
+                title.className = 'queue-item-title';
+                title.textContent = item.title || item.url;
+                
+                const status = document.createElement('div');
+                status.className = 'queue-item-status';
+                status.textContent = `Статус: ${item.status}`;
+                if (item.progress !== undefined) {
+                    status.textContent += ` (${Math.round(item.progress)}%)`;
+                }
+                
+                info.appendChild(title);
+                info.appendChild(status);
+                div.appendChild(info);
+                queueList.appendChild(div);
+            });
+            queueSection.style.display = 'block';
+        } else {
+            queueSection.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки очереди:', error);
+    }
+}
+
+// Запуск очереди
+async function handleQueueStart() {
+    try {
+        await fetch('/api/queue/start', { method: 'POST' });
+        showStatus('Загрузка запущена', 'success');
+        loadQueue();
+    } catch (error) {
+        showStatus('Ошибка: ' + error.message, 'error');
+    }
+}
+
+// Пауза очереди
+async function handleQueuePause() {
+    try {
+        const isPaused = queuePauseBtn.textContent === 'Продолжить';
+        const endpoint = isPaused ? 'resume' : 'pause';
+        await fetch(`/api/queue/${endpoint}`, { method: 'POST' });
+        queuePauseBtn.textContent = isPaused ? 'Пауза' : 'Продолжить';
+        showStatus(isPaused ? 'Загрузка возобновлена' : 'Загрузка приостановлена', 'info');
+        loadQueue();
+    } catch (error) {
+        showStatus('Ошибка: ' + error.message, 'error');
+    }
+}
+
+// Остановка очереди
+async function handleQueueStop() {
+    try {
+        await fetch('/api/queue/stop', { method: 'POST' });
+        showStatus('Загрузка остановлена', 'info');
+        loadQueue();
+    } catch (error) {
+        showStatus('Ошибка: ' + error.message, 'error');
+    }
+}
+
+
+// Загрузка истории
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+
+        historyList.innerHTML = '';
+
+        if (data.history && data.history.length > 0) {
+            data.history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+
+                const info = document.createElement('div');
+                info.className = 'history-item-info';
+
+                const title = document.createElement('div');
+                title.className = 'history-item-title';
+                title.textContent = item.title || item.url;
+
+                const details = document.createElement('div');
+                details.className = 'history-item-details';
+                const statusText = item.status === 'finished' ? 'Завершено' : 
+                                 item.status === 'error' ? 'Ошибка' : 'Отменено';
+                details.textContent = `${statusText} | ${new Date(item.created_at).toLocaleString()}`;
+
+                info.appendChild(title);
+                info.appendChild(details);
+                div.appendChild(info);
+                historyList.appendChild(div);
+            });
+        } else {
+            historyList.innerHTML = '<p style="color: #718096; text-align: center;">История пуста</p>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки истории:', error);
     }
 }
 

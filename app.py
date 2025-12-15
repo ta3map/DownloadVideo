@@ -7,21 +7,32 @@ import time
 import json
 import uuid
 import os
+import sys
+from io import StringIO
+os.environ['WEBVIEW_BACKEND'] = 'qt'
 import webview
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
     CustomLogger, check_ffmpeg
 )
 from logger import log_frontend_error, log_info, log_error, log_warning, log_debug
+from database import Database
 
 app = Flask(__name__)
 
-# Хранилище активных задач
+# Хранилище активных задач (только для форматов)
 tasks = {}
 tasks_lock = threading.Lock()
 
+# База данных
+db = Database()
+
 # Папка загрузки по умолчанию
 DOWNLOAD_FOLDER = get_default_download_dir()
+
+# Активные загрузки из очереди
+active_tasks = {}
+active_tasks_lock = threading.Lock()
 
 
 def get_task(task_id):
@@ -108,9 +119,110 @@ def get_formats_result(task_id):
     return jsonify({'status': task['status']})
 
 
+def start_queue_download(queue_id, queue_item):
+    """Запуск загрузки из очереди"""
+    url = queue_item['url']
+    format_id = queue_item['format_id']
+    audio_only = bool(queue_item['audio_only'])
+    download_folder = queue_item['download_folder']
+    title = queue_item.get('title', '')
+    
+    if not title:
+        try:
+            result = get_formats(url)
+            title = result.get('title', '')
+        except:
+            pass
+    
+    task_id = str(uuid.uuid4())
+    db.update_queue_item(queue_id, status='downloading', task_id=task_id)
+    
+    with active_tasks_lock:
+        active_tasks[task_id] = {
+            'queue_id': queue_id,
+            'url': url,
+            'title': title,
+            'format_id': format_id,
+            'audio_only': audio_only,
+            'progress': 0,
+            'paused': False,
+            'cancelled': False,
+            'final_file': None,
+            'error': None,
+            'paused_flag': {'value': False},
+            'cancelled_flag': {'value': False}
+        }
+    
+    def progress_callback(percent):
+        with active_tasks_lock:
+            if task_id in active_tasks:
+                active_tasks[task_id]['progress'] = percent
+    
+    def final_file_callback(filename):
+        with active_tasks_lock:
+            if task_id in active_tasks:
+                active_tasks[task_id]['final_file'] = filename
+    
+    paused_flag = active_tasks[task_id]['paused_flag']
+    cancelled_flag = active_tasks[task_id]['cancelled_flag']
+    logger = CustomLogger(final_file_callback=final_file_callback)
+    
+    def worker():
+        final_file = ''
+        try:
+            download_video(
+                url=url,
+                format_id=format_id,
+                download_folder=download_folder,
+                audio_only=audio_only,
+                progress_callback=progress_callback,
+                logger=logger,
+                paused_flag=paused_flag,
+                cancelled_flag=cancelled_flag,
+                final_file_callback=final_file_callback
+            )
+            with active_tasks_lock:
+                if task_id in active_tasks:
+                    final_file = active_tasks[task_id].get('final_file', '')
+                    if not title:
+                        title = active_tasks[task_id].get('title', '')
+                    del active_tasks[task_id]
+            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file)
+            db.update_queue_item(queue_id, status='finished')
+            start_next_queue_item()
+        except Exception as e:
+            error_msg = str(e)
+            with active_tasks_lock:
+                if task_id in active_tasks:
+                    if not title:
+                        title = active_tasks[task_id].get('title', '')
+                    del active_tasks[task_id]
+            if 'cancelled' in error_msg.lower():
+                db.add_to_history(url, title, format_id, audio_only, 'cancelled', '')
+                db.update_queue_item(queue_id, status='cancelled')
+            else:
+                db.add_to_history(url, title, format_id, audio_only, 'error', '')
+                db.update_queue_item(queue_id, status='error')
+            start_next_queue_item()
+    
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    with active_tasks_lock:
+        active_tasks[task_id]['thread'] = thread
+
+def start_next_queue_item():
+    """Запуск следующего элемента из очереди если есть место"""
+    if db.count_active_downloads() >= 3:
+        return
+    
+    pending = db.get_pending_queue()
+    if pending:
+        item = pending[0]
+        start_queue_download(item['id'], item)
+
 @app.route('/api/download', methods=['POST'])
 def start_download():
-    """Запуск скачивания"""
+    """Запуск скачивания (старый способ, для совместимости)"""
     data = request.json
     url = data.get('url', '').strip()
     format_id = data.get('format_id')
@@ -123,32 +235,27 @@ def start_download():
     if not audio_only and not format_id:
         return jsonify({'error': 'Формат не выбран'}), 400
     
-    # Создаем папку если её нет
     os.makedirs(download_folder, exist_ok=True)
     
     task_id = create_task()
     update_task(task_id, status='downloading', url=url, format_id=format_id,
                 audio_only=audio_only, progress=0, paused=False, cancelled=False)
     
-    # Флаги для управления скачиванием
     paused_flag = {'value': False}
     cancelled_flag = {'value': False}
     
-    def set_paused(value):
-        paused_flag['value'] = value
-        update_task(task_id, paused=value, status='paused' if value else 'downloading')
-    
-    def set_cancelled(value):
-        cancelled_flag['value'] = value
-        update_task(task_id, cancelled=value, status='cancelled')
-    
-    # Колбэки
     def progress_callback(percent):
         update_task(task_id, progress=percent)
     
     def final_file_callback(filename):
         update_task(task_id, final_file=filename)
-    
+        if filename:
+            try:
+                info = get_formats(url)
+                title = info.get('title', '')
+            except:
+                title = ''
+            db.add_to_history(url, title, format_id, audio_only, 'finished', filename)
     logger = CustomLogger(final_file_callback=final_file_callback)
     
     def worker():
@@ -169,9 +276,21 @@ def start_download():
             if 'cancelled' in str(e).lower():
                 log_info(f"Download cancelled for task {task_id}")
                 update_task(task_id, status='cancelled')
+                try:
+                    info = get_formats(url)
+                    title = info.get('title', '')
+                except:
+                    title = ''
+                db.add_to_history(url, title, format_id, audio_only, 'cancelled', '')
             else:
                 log_error(f"Error downloading for task {task_id}: {e}")
                 update_task(task_id, status='error', error=str(e))
+                try:
+                    info = get_formats(url)
+                    title = info.get('title', '')
+                except:
+                    title = ''
+                db.add_to_history(url, title, format_id, audio_only, 'error', '')
     
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
@@ -315,6 +434,117 @@ def log_frontend_error_endpoint():
         log_error(f"Error logging frontend error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/queue/add', methods=['POST'])
+def queue_add():
+    """Добавление в очередь"""
+    data = request.json
+    url = data.get('url', '').strip()
+    title = data.get('title', '')
+    format_id = data.get('format_id')
+    audio_only = data.get('audio_only', False)
+    download_folder = data.get('download_folder', DOWNLOAD_FOLDER)
+    
+    if not url:
+        return jsonify({'error': 'URL не указан'}), 400
+    
+    queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder)
+    return jsonify({'queue_id': queue_id})
+
+@app.route('/api/queue/list', methods=['GET'])
+def queue_list():
+    """Список очереди"""
+    queue = db.get_queue()
+    for item in queue:
+        if item['task_id']:
+            with active_tasks_lock:
+                task = active_tasks.get(item['task_id'])
+                if task:
+                    item['progress'] = task['progress']
+                    item['paused'] = task['paused']
+    return jsonify({'queue': queue})
+
+@app.route('/api/queue/start', methods=['POST'])
+def queue_start():
+    """Запуск загрузки очереди"""
+    while db.count_active_downloads() < 3:
+        pending = db.get_pending_queue()
+        if not pending:
+            break
+        item = pending[0]
+        start_queue_download(item['id'], item)
+    return jsonify({'status': 'started'})
+
+@app.route('/api/queue/pause', methods=['POST'])
+def queue_pause():
+    """Пауза всех загрузок"""
+    with active_tasks_lock:
+        for task_id, task in active_tasks.items():
+            task['paused_flag']['value'] = True
+            task['paused'] = True
+            queue_id = task['queue_id']
+            db.update_queue_item(queue_id, status='paused')
+    return jsonify({'status': 'paused'})
+
+@app.route('/api/queue/resume', methods=['POST'])
+def queue_resume():
+    """Возобновление всех загрузок"""
+    with active_tasks_lock:
+        for task_id, task in active_tasks.items():
+            if task['paused']:
+                task['paused_flag']['value'] = False
+                task['paused'] = False
+                queue_id = task['queue_id']
+                db.update_queue_item(queue_id, status='downloading')
+    return jsonify({'status': 'resumed'})
+
+@app.route('/api/queue/stop', methods=['POST'])
+def queue_stop():
+    """Остановка всех загрузок"""
+    with active_tasks_lock:
+        for task_id, task in list(active_tasks.items()):
+            task['cancelled_flag']['value'] = True
+            queue_id = task['queue_id']
+            db.update_queue_item(queue_id, status='cancelled')
+            del active_tasks[task_id]
+    db.clear_queue()
+    return jsonify({'status': 'stopped'})
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    """Получение истории скачиваний"""
+    history = db.get_history()
+    return jsonify({'history': history})
+
+@app.route('/api/ui-state', methods=['GET', 'POST'])
+def ui_state():
+    """Сохранение и загрузка UI состояния"""
+    if request.method == 'POST':
+        data = request.json
+        for key, value in data.items():
+            db.save_ui_state(key, value)
+        return jsonify({'status': 'saved'})
+    else:
+        state = db.get_all_ui_state()
+        return jsonify(state)
+
+@app.route('/api/queue/progress')
+def queue_progress_stream():
+    """SSE поток для обновления прогресса очереди"""
+    def generate():
+        while True:
+            with active_tasks_lock:
+                tasks_data = {}
+                for task_id, task in active_tasks.items():
+                    tasks_data[task_id] = {
+                        'queue_id': task['queue_id'],
+                        'progress': task['progress'],
+                        'paused': task['paused']
+                    }
+            yield f"data: {json.dumps(tasks_data)}\n\n"
+            time.sleep(0.5)
+    
+    return Response(generate(), mimetype='text/event-stream')
+
 
 def start_flask():
     """Запуск Flask в отдельном потоке"""
@@ -333,7 +563,9 @@ if __name__ == '__main__':
     time.sleep(1)
     
     log_info("Creating webview window")
-    # Создаем webview окно
+    # Подавляем ошибку GTK (webview все равно попытается проверить все бэкенды)
+    old_stderr = sys.stderr
+    sys.stderr = StringIO()
     try:
         webview.create_window(
             'Video Downloader',
@@ -342,6 +574,10 @@ if __name__ == '__main__':
             height=700,
             resizable=True
         )
+    finally:
+        sys.stderr = old_stderr
+    
+    try:
         webview.start(debug=False)
     except Exception as e:
         log_error(f"Failed to start webview: {e}")

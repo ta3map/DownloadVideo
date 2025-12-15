@@ -215,60 +215,79 @@ input[type="checkbox"] {
     display: block;
 }
 
-.downloads-section {
-    margin-top: 40px;
+.queue-section {
+    margin-top: 30px;
+    margin-bottom: 30px;
 }
 
-.downloads-list {
+.queue-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    margin-bottom: 15px;
 }
 
-.download-item {
+.queue-item {
     padding: 15px;
     background: #f7fafc;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     transition: all 0.3s;
 }
 
-.download-item:hover {
+.queue-item:hover {
     background: #edf2f7;
-    transform: translateX(5px);
 }
 
-.download-item-info {
+.queue-item-info {
     flex: 1;
 }
 
-.download-item-name {
+.queue-item-title {
     font-weight: 600;
     color: #2d3748;
     margin-bottom: 5px;
 }
 
-.download-item-size {
+.queue-item-status {
     font-size: 12px;
     color: #718096;
 }
 
-.download-item-btn {
-    padding: 8px 16px;
-    background: #667eea;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
+.history-section {
+    margin-top: 40px;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.history-item {
+    padding: 15px;
+    background: #f7fafc;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
     transition: all 0.3s;
 }
 
-.download-item-btn:hover {
-    background: #5568d3;
-    transform: scale(1.05);
+.history-item:hover {
+    background: #edf2f7;
+}
+
+.history-item-info {
+    flex: 1;
+}
+
+.history-item-title {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 5px;
+}
+
+.history-item-details {
+    font-size: 12px;
+    color: #718096;
 }
 
