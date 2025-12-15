@@ -301,6 +301,19 @@ def get_history():
 @app.route('/api/history/delete/<int:history_id>', methods=['POST'])
 def delete_history_item(history_id):
     """Удаление элемента из истории"""
+    data = request.json or {}
+    delete_file = data.get('delete_file', False)
+    
+    if delete_file:
+        history_item = db.get_history_item(history_id)
+        if history_item and history_item.get('file_path'):
+            file_path = history_item['file_path']
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    log_error(f"Error deleting file {file_path}: {e}")
+    
     db.delete_history_item(history_id)
     return jsonify({'status': 'deleted'})
 

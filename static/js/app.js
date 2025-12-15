@@ -18,6 +18,10 @@ const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
 const statusMessage = document.getElementById('status-message');
 const historyList = document.getElementById('history-list');
+const deleteModal = document.getElementById('delete-modal');
+const deleteHistoryOnlyBtn = document.getElementById('delete-history-only-btn');
+const deleteWithFileBtn = document.getElementById('delete-with-file-btn');
+const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -101,6 +105,19 @@ function setupEventListeners() {
     queueStartBtn.addEventListener('click', handleQueueStart);
     queuePauseBtn.addEventListener('click', handleQueuePause);
     queueStopBtn.addEventListener('click', handleQueueStop);
+    deleteHistoryOnlyBtn.addEventListener('click', () => {
+        if (currentDeleteHistoryId) {
+            deleteHistoryItem(currentDeleteHistoryId, false);
+        }
+    });
+    deleteWithFileBtn.addEventListener('click', () => {
+        if (currentDeleteHistoryId) {
+            deleteHistoryItem(currentDeleteHistoryId, true);
+        }
+    });
+    cancelDeleteBtn.addEventListener('click', () => {
+        hideDeleteModal();
+    });
     audioOnlyCheckbox.addEventListener('change', () => {
         handleAudioOnlyChange();
         saveUIState();
@@ -461,7 +478,7 @@ async function loadHistory() {
             deleteBtn.className = 'delete-btn';
             deleteBtn.textContent = '×';
             deleteBtn.title = 'Delete';
-            deleteBtn.onclick = () => deleteHistoryItem(item.id);
+            deleteBtn.onclick = () => showDeleteModal(item.id);
             buttonsDiv.appendChild(deleteBtn);
             
             div.appendChild(buttonsDiv);
@@ -522,8 +539,32 @@ function copyHistoryUrl(url) {
 }
 
 // Удаление элемента из истории
-async function deleteHistoryItem(historyId) {
-    await fetch(`/api/history/delete/${historyId}`, { method: 'POST' });
+let currentDeleteHistoryId = null;
+
+function showDeleteModal(historyId) {
+    currentDeleteHistoryId = historyId;
+    deleteModal.style.display = 'flex';
+}
+
+deleteModal.addEventListener('click', (e) => {
+    if (e.target === deleteModal) {
+        hideDeleteModal();
+    }
+});
+
+function hideDeleteModal() {
+    deleteModal.style.display = 'none';
+    currentDeleteHistoryId = null;
+}
+
+async function deleteHistoryItem(historyId, deleteFile) {
+    await fetch(`/api/history/delete/${historyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_file: deleteFile })
+    });
+    hideDeleteModal();
     loadHistory();
 }
+
 

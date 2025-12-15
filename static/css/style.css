@@ -338,3 +338,78 @@ input[type="checkbox"] {
     transform: scale(1.2);
 }
 
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    min-width: 300px;
+    max-width: 500px;
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #2d3748;
+}
+
+.modal-content p {
+    margin-bottom: 20px;
+    color: #4a5568;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.modal-buttons .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.modal-buttons .btn-warning {
+    background: #ed8936;
+    color: white;
+}
+
+.modal-buttons .btn-warning:hover {
+    background: #dd6b20;
+}
+
+.modal-buttons .btn-danger {
+    background: #e53e3e;
+    color: white;
+}
+
+.modal-buttons .btn-danger:hover {
+    background: #c53030;
+}
+
+.modal-buttons .btn:not(.btn-warning):not(.btn-danger) {
+    background: #e2e8f0;
+    color: #2d3748;
+}
+
+.modal-buttons .btn:not(.btn-warning):not(.btn-danger):hover {
+    background: #cbd5e0;
+}
+
