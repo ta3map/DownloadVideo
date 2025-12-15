@@ -13,7 +13,7 @@ import platform
 from io import StringIO
 os.environ['WEBVIEW_BACKEND'] = 'qt'
 import webview
-from PyQt5.QtWidgets import QApplication, QFileDialog
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
@@ -361,19 +361,79 @@ def get_clipboard():
 def select_folder():
     """Открытие диалога выбора папки"""
     try:
-        app_qt = QApplication.instance()
-        if app_qt is None:
-            app_qt = QApplication([])
-        
         data = request.json or {}
         current_folder = data.get('current_folder', '')
+        start_dir = current_folder if current_folder and os.path.exists(current_folder) else DOWNLOAD_FOLDER
         
-        folder = QFileDialog.getExistingDirectory(
-            None,
-            'Select Download Folder',
-            current_folder if current_folder and os.path.exists(current_folder) else DOWNLOAD_FOLDER,
-            QFileDialog.ShowDirsOnly
-        )
+        system = platform.system()
+        folder = None
+        
+        if system == 'Linux':
+            # Используем zenity или kdialog для Linux
+            try:
+                result = subprocess.run(
+                    ['zenity', '--file-selection', '--directory', '--title=Select Download Folder'],
+                    cwd=start_dir if os.path.exists(start_dir) else None,
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                if result.returncode == 0:
+                    folder = result.stdout.strip()
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                try:
+                    result = subprocess.run(
+                        ['kdialog', '--getexistingdirectory', start_dir, '--title', 'Select Download Folder'],
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    if result.returncode == 0:
+                        folder = result.stdout.strip()
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
+        elif system == 'Windows':
+            # Используем PowerShell для Windows
+            try:
+                ps_script = f'''
+                Add-Type -AssemblyName System.Windows.Forms
+                $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+                $folderBrowser.Description = "Select Download Folder"
+                $folderBrowser.SelectedPath = "{start_dir}"
+                if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
+                    Write-Output $folderBrowser.SelectedPath
+                }}
+                '''
+                result = subprocess.run(
+                    ['powershell', '-Command', ps_script],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    folder = result.stdout.strip()
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        elif system == 'Darwin':
+            # Используем osascript для macOS
+            try:
+                script = f'''
+                tell application "System Events"
+                    activate
+                    set folderPath to choose folder with prompt "Select Download Folder" default location POSIX file "{start_dir}"
+                    return POSIX path of folderPath
+                end tell
+                '''
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                if result.returncode == 0:
+                    folder = result.stdout.strip()
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
         
         if folder:
             return jsonify({'folder': folder})
