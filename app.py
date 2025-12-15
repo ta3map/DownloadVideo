@@ -377,7 +377,29 @@ def queue_stop():
 def get_history():
     """Получение истории скачиваний"""
     history = db.get_history()
-    return jsonify({'history': history})
+    
+    # Получаем все URL из очереди для проверки
+    queue = db.get_queue()
+    queue_urls = {item.get('url') for item in queue if item.get('url')}
+    
+    # Проверяем существование файлов и удаляем несуществующие
+    valid_history = []
+    for item in history:
+        file_path = item.get('file_path', '')
+        
+        # Если есть путь к файлу, проверяем его существование
+        if file_path and file_path.strip():
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                # Файл не существует, проверяем, есть ли этот URL в очереди
+                item_url = item.get('url', '')
+                if item_url not in queue_urls:
+                    # Удаляем из истории, если файла нет и его нет в очереди
+                    db.delete_history_item(item['id'])
+                    continue
+        
+        valid_history.append(item)
+    
+    return jsonify({'history': valid_history})
 
 @app.route('/api/history/delete/<int:history_id>', methods=['POST'])
 def delete_history_item(history_id):
