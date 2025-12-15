@@ -107,3 +107,7 @@ app.log.*
 *.flv
 *.mov
 
+# База данных
+downloads.db
+*.db
+
