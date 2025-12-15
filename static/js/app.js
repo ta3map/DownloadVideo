@@ -26,6 +26,9 @@ const deleteModal = document.getElementById('delete-modal');
 const deleteHistoryOnlyBtn = document.getElementById('delete-history-only-btn');
 const deleteWithFileBtn = document.getElementById('delete-with-file-btn');
 const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
+const themeIcon = document.getElementById('theme-icon');
+const htmlElement = document.documentElement;
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -52,6 +55,7 @@ async function logErrorToBackend(type, message, stack, timestamp) {
 document.addEventListener('DOMContentLoaded', async () => {
     setupErrorHandling();
     progressSection.style.display = 'none';
+    await loadTheme();
     await loadUIState();
     await loadConfig();
     loadHistory();
@@ -89,6 +93,46 @@ function setupErrorHandling() {
     };
 }
 
+// Загрузка темы
+async function loadTheme() {
+    try {
+        const response = await fetch('/api/ui-state');
+        const state = await response.json();
+        const theme = state.theme || htmlElement.getAttribute('data-theme') || 'light';
+        applyTheme(theme);
+    } catch (error) {
+        console.error('Error loading theme:', error);
+        const theme = htmlElement.getAttribute('data-theme') || 'light';
+        applyTheme(theme);
+    }
+}
+
+// Применение темы
+function applyTheme(theme) {
+    htmlElement.setAttribute('data-theme', theme);
+    if (themeIcon) {
+        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+}
+
+// Переключение темы
+async function handleThemeToggle() {
+    const currentTheme = htmlElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(newTheme);
+    
+    try {
+        await fetch('/api/ui-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: newTheme })
+        });
+    } catch (error) {
+        console.error('Error saving theme:', error);
+        logErrorToBackend('saveTheme', error.message, error.stack, new Date().toISOString());
+    }
+}
+
 // Загрузка конфигурации
 async function loadConfig() {
     try {
@@ -105,6 +149,7 @@ async function loadConfig() {
 
 // Настройка обработчиков событий
 function setupEventListeners() {
+    themeToggleBtn.addEventListener('click', handleThemeToggle);
     pasteUrlBtn.addEventListener('click', handlePasteUrl);
     selectFolderBtn.addEventListener('click', handleSelectFolder);
     fetchFormatsBtn.addEventListener('click', handleFetchFormats);

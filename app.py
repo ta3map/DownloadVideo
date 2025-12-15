@@ -34,6 +34,85 @@ db = Database()
 # Папка загрузки по умолчанию
 DOWNLOAD_FOLDER = get_default_download_dir()
 
+# Определение системной темы
+def get_system_theme():
+    """Определяет системную тему (dark/light)"""
+    # Сначала проверяем сохраненную тему в БД
+    saved_theme = db.get_all_ui_state().get('theme')
+    if saved_theme in ['dark', 'light']:
+        return saved_theme
+    
+    # Если нет сохраненной темы, определяем системную
+    system = platform.system()
+    try:
+        if system == 'Linux':
+            # Проверяем через gsettings (GNOME)
+            try:
+                result = subprocess.run(
+                    ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                if result.returncode == 0:
+                    theme = result.stdout.strip().strip("'\"")
+                    if 'dark' in theme.lower():
+                        return 'dark'
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            
+            # Проверяем через gsettings gtk-theme (старый способ)
+            try:
+                result = subprocess.run(
+                    ['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                if result.returncode == 0:
+                    theme = result.stdout.strip().strip("'\"")
+                    if 'dark' in theme.lower():
+                        return 'dark'
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            
+            # Проверяем переменную окружения
+            if os.environ.get('GTK_THEME', '').lower().find('dark') != -1:
+                return 'dark'
+                
+        elif system == 'Windows':
+            # Проверяем через реестр Windows
+            try:
+                import winreg
+                key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+                )
+                value = winreg.QueryValueEx(key, 'AppsUseLightTheme')[0]
+                winreg.CloseKey(key)
+                if value == 0:
+                    return 'dark'
+            except:
+                pass
+                
+        elif system == 'Darwin':
+            # Проверяем через defaults (macOS)
+            try:
+                result = subprocess.run(
+                    ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                if result.returncode == 0 and 'Dark' in result.stdout:
+                    return 'dark'
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+    except Exception as e:
+        log_debug(f"Error detecting system theme: {e}")
+    
+    return 'light'  # По умолчанию светлая тема
+
 # Активные загрузки из очереди
 active_tasks = {}
 active_tasks_lock = threading.Lock()
