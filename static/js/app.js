@@ -6,6 +6,7 @@ let currentVideoTitle = null;
 const urlInput = document.getElementById('url-input');
 const pasteUrlBtn = document.getElementById('paste-url-btn');
 const downloadFolderInput = document.getElementById('download-folder');
+const selectFolderBtn = document.getElementById('select-folder-btn');
 const audioOnlyCheckbox = document.getElementById('audio-only');
 const fetchFormatsBtn = document.getElementById('fetch-formats-btn');
 const formatsSection = document.getElementById('formats-section');
@@ -105,6 +106,7 @@ async function loadConfig() {
 // Настройка обработчиков событий
 function setupEventListeners() {
     pasteUrlBtn.addEventListener('click', handlePasteUrl);
+    selectFolderBtn.addEventListener('click', handleSelectFolder);
     fetchFormatsBtn.addEventListener('click', handleFetchFormats);
     addToQueueBtn.addEventListener('click', handleAddToQueue);
     queueStartBtn.addEventListener('click', handleQueueStart);
@@ -154,6 +156,28 @@ async function handlePasteUrl() {
     } catch (error) {
         showStatus('Failed to get clipboard content', 'error');
         logErrorToBackend('pasteUrl', error.message, error.stack, new Date().toISOString());
+    }
+}
+
+// Выбор папки для загрузки
+async function handleSelectFolder() {
+    try {
+        const response = await fetch('/api/select-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_folder: downloadFolderInput.value })
+        });
+        const data = await response.json();
+        if (data.folder) {
+            downloadFolderInput.value = data.folder;
+            saveUIState();
+            showStatus('Folder selected', 'success');
+        } else if (data.error) {
+            showStatus(data.error, 'info');
+        }
+    } catch (error) {
+        showStatus('Failed to select folder', 'error');
+        logErrorToBackend('selectFolder', error.message, error.stack, new Date().toISOString());
     }
 }
 

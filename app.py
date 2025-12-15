@@ -13,7 +13,7 @@ import platform
 from io import StringIO
 os.environ['WEBVIEW_BACKEND'] = 'qt'
 import webview
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QFileDialog
 from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
@@ -355,6 +355,32 @@ def get_clipboard():
         return jsonify({'text': text})
     except Exception as e:
         log_error(f"Error getting clipboard: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/select-folder', methods=['POST'])
+def select_folder():
+    """Открытие диалога выбора папки"""
+    try:
+        app_qt = QApplication.instance()
+        if app_qt is None:
+            app_qt = QApplication([])
+        
+        data = request.json or {}
+        current_folder = data.get('current_folder', '')
+        
+        folder = QFileDialog.getExistingDirectory(
+            None,
+            'Select Download Folder',
+            current_folder if current_folder and os.path.exists(current_folder) else DOWNLOAD_FOLDER,
+            QFileDialog.ShowDirsOnly
+        )
+        
+        if folder:
+            return jsonify({'folder': folder})
+        else:
+            return jsonify({'error': 'No folder selected'}), 400
+    except Exception as e:
+        log_error(f"Error selecting folder: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/open-folder', methods=['POST'])
