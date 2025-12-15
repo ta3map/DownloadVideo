@@ -297,6 +297,25 @@ input[type="checkbox"] {
     color: #718096;
 }
 
+.history-item-buttons {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.action-btn {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 5px;
+    transition: all 0.3s;
+}
+
+.action-btn:hover {
+    transform: scale(1.2);
+}
+
 .delete-btn {
     background: transparent;
     border: none;

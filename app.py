@@ -8,6 +8,8 @@ import json
 import uuid
 import os
 import sys
+import subprocess
+import platform
 from io import StringIO
 os.environ['WEBVIEW_BACKEND'] = 'qt'
 import webview
@@ -301,6 +303,48 @@ def delete_history_item(history_id):
     """Удаление элемента из истории"""
     db.delete_history_item(history_id)
     return jsonify({'status': 'deleted'})
+
+@app.route('/api/history/file/<int:history_id>', methods=['GET'])
+def get_history_file(history_id):
+    """Получение пути к файлу из истории"""
+    history_item = db.get_history_item(history_id)
+    if history_item:
+        return jsonify({'file_path': history_item.get('file_path', '')})
+    return jsonify({'error': 'Not found'}), 404
+
+@app.route('/api/open-file', methods=['POST'])
+def open_file():
+    """Открытие файла"""
+    data = request.json
+    file_path = data.get('file_path', '')
+    if file_path and os.path.exists(file_path):
+        system = platform.system()
+        if system == 'Windows':
+            os.startfile(file_path)
+        elif system == 'Darwin':
+            subprocess.Popen(['open', file_path])
+        else:
+            subprocess.Popen(['xdg-open', file_path])
+        return jsonify({'status': 'opened'})
+    return jsonify({'error': 'File not found'}), 404
+
+@app.route('/api/open-folder', methods=['POST'])
+def open_folder():
+    """Открытие папки"""
+    data = request.json
+    file_path = data.get('file_path', '')
+    if file_path:
+        folder_path = os.path.dirname(file_path) if os.path.isfile(file_path) else file_path
+        if os.path.exists(folder_path):
+            system = platform.system()
+            if system == 'Windows':
+                os.startfile(folder_path)
+            elif system == 'Darwin':
+                subprocess.Popen(['open', folder_path])
+            else:
+                subprocess.Popen(['xdg-open', folder_path])
+            return jsonify({'status': 'opened'})
+    return jsonify({'error': 'Folder not found'}), 404
 
 @app.route('/api/queue/delete/<int:queue_id>', methods=['POST'])
 def delete_queue_item(queue_id):

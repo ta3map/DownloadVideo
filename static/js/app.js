@@ -421,13 +421,33 @@ async function loadHistory() {
             info.appendChild(details);
             div.appendChild(info);
             
+            const buttonsDiv = document.createElement('div');
+            buttonsDiv.className = 'history-item-buttons';
+            
+            if (item.status === 'finished' && item.file_path) {
+                const openFileBtn = document.createElement('button');
+                openFileBtn.className = 'action-btn';
+                openFileBtn.textContent = '📄';
+                openFileBtn.title = 'Open file';
+                openFileBtn.onclick = () => openHistoryFile(item.id);
+                buttonsDiv.appendChild(openFileBtn);
+                
+                const openFolderBtn = document.createElement('button');
+                openFolderBtn.className = 'action-btn';
+                openFolderBtn.textContent = '📁';
+                openFolderBtn.title = 'Open folder';
+                openFolderBtn.onclick = () => openHistoryFolder(item.id);
+                buttonsDiv.appendChild(openFolderBtn);
+            }
+            
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
             deleteBtn.textContent = '×';
             deleteBtn.title = 'Delete';
             deleteBtn.onclick = () => deleteHistoryItem(item.id);
-            div.appendChild(deleteBtn);
+            buttonsDiv.appendChild(deleteBtn);
             
+            div.appendChild(buttonsDiv);
             historyList.appendChild(div);
         });
     } else {
@@ -439,6 +459,32 @@ async function loadHistory() {
 async function deleteQueueItem(queueId) {
     await fetch(`/api/queue/delete/${queueId}`, { method: 'POST' });
     loadQueue();
+}
+
+// Открытие файла из истории
+async function openHistoryFile(historyId) {
+    const response = await fetch(`/api/history/file/${historyId}`);
+    const data = await response.json();
+    if (data.file_path) {
+        await fetch('/api/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_path: data.file_path })
+        });
+    }
+}
+
+// Открытие папки из истории
+async function openHistoryFolder(historyId) {
+    const response = await fetch(`/api/history/file/${historyId}`);
+    const data = await response.json();
+    if (data.file_path) {
+        await fetch('/api/open-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_path: data.file_path })
+        });
+    }
 }
 
 // Удаление элемента из истории

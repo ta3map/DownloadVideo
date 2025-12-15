@@ -113,6 +113,15 @@ class Database:
         columns = [desc[0] for desc in cursor.description]
         return [dict(zip(columns, row)) for row in rows]
     
+    def get_history_item(self, history_id):
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM download_history WHERE id = ?', (history_id,))
+        row = cursor.fetchone()
+        if row:
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, row))
+        return None
+    
     def save_ui_state(self, key, value):
         cursor = self.conn.cursor()
         cursor.execute('INSERT OR REPLACE INTO ui_state (key, value) VALUES (?, ?)', (key, value))
