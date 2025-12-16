@@ -703,22 +703,26 @@ async function loadQueue() {
     // Проверяем наличие retry_status для обновления overlay
     const retryStatus = data.queue.find(item => item.retry_status && item.status === 'downloading')?.retry_status;
     
+    // Управление overlay: проверяем независимо от блока прогресса
+    if (hasProgress) {
+        // Скрываем overlay когда прогресс >= 1% (загрузка уже началась)
+        hideLoadingOverlay();
+    } else if (retryStatus) {
+        // Показываем overlay с retry_status если он есть (во время инициализации)
+        showLoadingOverlay(retryStatus, true);
+    } else if (hasActiveDownloads && !hasProgress) {
+        // Показываем overlay при инициализации (есть активные загрузки, но нет прогресса)
+        showLoadingOverlay('Initializing download...', true);
+    } else if (!hasActiveDownloads) {
+        // Скрываем overlay если нет активных загрузок
+        hideLoadingOverlay();
+    }
+    
     if (activeProgresses.length > 0 && hasActiveDownloads) {
         const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
         updateProgress(avgProgress);
         updateWindowTitle(Math.round(avgProgress));
         progressSection.style.display = 'block';
-        
-        // Скрываем overlay загрузки когда прогресс >= 1% и нет retry_status
-        if (hasProgress && !retryStatus) {
-            hideLoadingOverlay();
-        } else if (retryStatus) {
-            // Показываем overlay с retry_status если он есть
-            showLoadingOverlay(retryStatus, true);
-        } else if (!hasProgress) {
-            // Показываем overlay при инициализации (нет прогресса)
-            showLoadingOverlay('Initializing download...', true);
-        }
         
         // Скрываем элементы формы и делаем очередь неактивной во время загрузки
         toggleFormElementsVisibility(false);
@@ -726,11 +730,6 @@ async function loadQueue() {
     } else {
         updateWindowTitle(null);
         progressSection.style.display = 'none';
-        
-        // Если нет активных загрузок, скрываем overlay инициализации
-        if (!hasActiveDownloads) {
-            hideLoadingOverlay();
-        }
         
         // Показываем элементы формы и делаем очередь активной когда нет активных загрузок или на паузе
         toggleFormElementsVisibility(true);
