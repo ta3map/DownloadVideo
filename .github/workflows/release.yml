@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' 
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Windows EXE
+      run: |
+        pyinstaller --onefile --windowed --name "Video Downloader" --icon "static/assets/favicon.ico" --add-data "templates;templates" --add-data "static;static" --add-data "video_downloader.py;." --add-data "database.py;." --add-data "logger.py;." app.py
+    
+    - name: Upload Windows EXE
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-downloader-windows
+        path: dist/Video Downloader.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libxrender1 libxrandr2 libxss1 libgtk-3-0 libasound2-dev libxtst6 libdrm2 libxcomposite1 libxdamage1 libxfixes3 libgbm1 libxkbcommon0 libfontconfig1 libfreetype6
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        # Установка дополнительных зависимостей для GUI
+        sudo apt-get install -y python3-tk
+    
+    - name: Build Linux executable
+      run: |
+        pyinstaller --onefile --windowed --name "Video_Downloader" --icon "static/assets/favicon.png" --add-data "templates:templates" --add-data "static:static" --add-data "video_downloader.py:." --add-data "database.py:." --add-data "logger.py:." app.py
+    
+    - name: Download AppImage tools
+      run: |
+        # Установка FUSE для AppImage
+        sudo apt-get install -y fuse libfuse2
+        wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+        chmod +x appimagetool-x86_64.AppImage
+    
+    - name: Create AppDir structure
+      run: |
+        mkdir -p AppDir/usr/bin
+        mkdir -p AppDir/usr/share/applications
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+        
+        # Copy executable
+        cp dist/Video_Downloader AppDir/usr/bin/
+        
+        # Copy icon
+        cp static/assets/favicon.png AppDir/usr/share/icons/hicolor/256x256/apps/videodownloader.png
+        cp static/assets/favicon.png AppDir/videodownloader.png
+        
+        # Create desktop file
+        cat > AppDir/usr/share/applications/videodownloader.desktop << EOF
+        [Desktop Entry]
+        Type=Application
+        Name=Video Downloader
+        Exec=Video_Downloader
+        Icon=videodownloader
+        Categories=Network;Video;
+        Comment=Download videos from various platforms
+        EOF
+        
+        # Create AppRun
+        cat > AppDir/AppRun << 'EOF'
+        #!/bin/bash
+        HERE="$(dirname "$(readlink -f "${0}")")"
+        export PATH="${HERE}/usr/bin:${PATH}"
+        exec "${HERE}/usr/bin/Video_Downloader" "$@"
+        EOF
+        chmod +x AppDir/AppRun
+        
+        # Copy desktop file to root
+        cp AppDir/usr/share/applications/videodownloader.desktop AppDir/
+    
+    - name: Create AppImage
+      run: |
+        ./appimagetool-x86_64.AppImage AppDir Video_Downloader-x86_64.AppImage
+    
+    - name: Upload Linux AppImage
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-downloader-linux
+        path: Video_Downloader-x86_64.AppImage
+
+  create-release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts/
+    
+    - name: Create archives
+      run: |
+        cd ./artifacts/
+        # Создаем zip-архивы для каждой платформы
+        cd video-downloader-windows && zip -r "../video-downloader-windows-${{ github.ref_name }}.zip" . && cd ..
+        cd video-downloader-linux && zip -r "../video-downloader-linux-${{ github.ref_name }}.zip" . && cd ..
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ./artifacts/video-downloader-windows-${{ github.ref_name }}.zip
+          ./artifacts/video-downloader-linux-${{ github.ref_name }}.zip
+        name: Video Downloader ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
