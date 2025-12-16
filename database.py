@@ -22,9 +22,16 @@ class Database:
                 audio_only INTEGER,
                 status TEXT,
                 file_path TEXT,
+                thumbnail_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Добавляем колонку thumbnail_path если её нет (для существующих БД)
+        try:
+            cursor.execute('ALTER TABLE download_history ADD COLUMN thumbnail_path TEXT')
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS download_queue (
@@ -49,12 +56,12 @@ class Database:
         
         self.conn.commit()
     
-    def add_to_history(self, url, title, format_id, audio_only, status, file_path):
+    def add_to_history(self, url, title, format_id, audio_only, status, file_path, thumbnail_path=None):
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO download_history (url, title, format_id, audio_only, status, file_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (url, title, format_id, 1 if audio_only else 0, status, file_path))
+            INSERT INTO download_history (url, title, format_id, audio_only, status, file_path, thumbnail_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (url, title, format_id, 1 if audio_only else 0, status, file_path, thumbnail_path))
         self.conn.commit()
         return cursor.lastrowid
     

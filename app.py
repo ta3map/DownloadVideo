@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
-    CustomLogger, check_ffmpeg
+    CustomLogger, check_ffmpeg, download_thumbnail
 )
 from logger import log_frontend_error, log_info, log_error, log_warning, log_debug
 from database import Database
@@ -33,6 +33,10 @@ db = Database()
 
 # Папка загрузки по умолчанию
 DOWNLOAD_FOLDER = get_default_download_dir()
+
+# Папка для thumbnails
+THUMBNAILS_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'thumbnails')
+os.makedirs(THUMBNAILS_FOLDER, exist_ok=True)
 
 # Определение системной темы
 def get_system_theme():
@@ -258,7 +262,16 @@ def start_queue_download(queue_id, queue_item):
             )
             with active_tasks_lock:
                 del active_tasks[task_id]
-            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0])
+            
+            # Скачиваем thumbnail
+            thumbnail_path = None
+            try:
+                video_id = str(hash(url))[:16]  # Используем хеш URL как ID
+                thumbnail_path = download_thumbnail(url, THUMBNAILS_FOLDER, video_id)
+            except Exception as e:
+                log_error(f"Error downloading thumbnail: {e}")
+            
+            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0], thumbnail_path)
             db.delete_queue_item(queue_id)
             start_next_queue_item()
         except Exception as e:
@@ -400,6 +413,12 @@ def get_history():
         valid_history.append(item)
     
     return jsonify({'history': valid_history})
+
+@app.route('/api/thumbnail/<path:filename>')
+def get_thumbnail(filename):
+    """Отдача thumbnail файла"""
+    from flask import send_from_directory
+    return send_from_directory(THUMBNAILS_FOLDER, filename)
 
 @app.route('/api/history/delete/<int:history_id>', methods=['POST'])
 def delete_history_item(history_id):

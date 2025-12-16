@@ -548,6 +548,19 @@ async function loadHistory() {
             const div = document.createElement('div');
             div.className = 'history-item';
 
+            // Thumbnail
+            if (item.thumbnail_path) {
+                const thumbnail = document.createElement('img');
+                thumbnail.className = 'history-item-thumbnail';
+                const filename = item.thumbnail_path.split('/').pop() || item.thumbnail_path.split('\\').pop();
+                thumbnail.src = `/api/thumbnail/${filename}`;
+                thumbnail.alt = item.title || 'Thumbnail';
+                thumbnail.onerror = function() {
+                    this.style.display = 'none';
+                };
+                div.appendChild(thumbnail);
+            }
+
             const info = document.createElement('div');
             info.className = 'history-item-info';
 
