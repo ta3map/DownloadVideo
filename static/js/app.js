@@ -779,8 +779,6 @@ async function loadHistory() {
 
             const details = document.createElement('div');
             details.className = 'history-item-details';
-            const statusText = item.status === 'finished' ? 'Completed' : 
-                             item.status === 'error' ? 'Error' : 'Cancelled';
             
             // Показываем формат вместо времени
             let formatText = '';
@@ -794,7 +792,13 @@ async function loadHistory() {
                 formatText = 'Unknown format';
             }
             
-            details.textContent = `${statusText} | ${formatText}`;
+            // Показываем статус только для ошибок и отмененных
+            if (item.status === 'finished') {
+                details.textContent = formatText;
+            } else {
+                const statusText = item.status === 'error' ? 'Error' : 'Cancelled';
+                details.textContent = `${statusText} | ${formatText}`;
+            }
 
             info.appendChild(title);
             info.appendChild(details);
