@@ -2,36 +2,9 @@
 
 A simple desktop application for downloading videos from various platforms using yt-dlp.
 
-## Releases
+## Download
 
 Latest releases are available on the [Releases](https://github.com/ta3map/DownloadVideo/releases) page.
-
-## Features
-
-- Download videos in various formats
-- Audio-only extraction (MP3)
-- Download queue with up to 3 simultaneous downloads
-
-## Requirements
-
-- Python 3.12+
-- Flask
-- pywebview
-- yt-dlp
-- ffmpeg (optional, for format merging)
-
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run the application:
-```bash
-python app.py
-```
 
 ## Usage
 
@@ -51,6 +24,22 @@ python app.py
 
 ### Download History
 ![Download History](screenshots/history.png)
+
+
+## Run from the sourcecode
+
+1. Clone the repository
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Run the application:
+```bash
+python app.py
+```
+
+
 
 ## License
 
