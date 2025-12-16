@@ -49,6 +49,63 @@ def check_ffmpeg():
         return False
 
 
+def get_video_id(info=None, url=None):
+    """Извлекает video_id из info или генерирует из URL"""
+    if info:
+        return info.get('id') or info.get('display_id') or (str(hash(url)) if url else None)
+    if url:
+        return str(hash(url))
+    return None
+
+
+def open_file_path(file_path):
+    """Открывает файл в системном приложении"""
+    system = platform.system()
+    if system == 'Windows':
+        os.startfile(file_path)
+    elif system == 'Darwin':
+        subprocess.Popen(['open', file_path])
+    else:
+        subprocess.Popen(['xdg-open', file_path])
+
+
+def open_folder_path(folder_path):
+    """Открывает папку в системном файловом менеджере"""
+    system = platform.system()
+    if system == 'Windows':
+        os.startfile(folder_path)
+    elif system == 'Darwin':
+        subprocess.Popen(['open', folder_path])
+    else:
+        subprocess.Popen(['xdg-open', folder_path])
+
+
+def safe_delete_thumbnail(thumbnail_path):
+    """Безопасно удаляет thumbnail файл если он существует"""
+    if thumbnail_path and os.path.exists(thumbnail_path) and os.path.isfile(thumbnail_path):
+        try:
+            os.remove(thumbnail_path)
+        except Exception as e:
+            log_error(f"Error deleting thumbnail {thumbnail_path}: {e}")
+
+
+def get_flag_value(flag):
+    """Получает значение флага (поддерживает dict и callable)"""
+    if isinstance(flag, dict):
+        return flag.get("value", False)
+    elif callable(flag):
+        return flag.get()
+    return False
+
+
+def set_flag_value(flag, value):
+    """Устанавливает значение флага"""
+    if isinstance(flag, dict):
+        flag["value"] = value
+    elif callable(flag):
+        flag.set(value)
+
+
 def format_format_label(fmt):
     """
     Форматирует строку формата для отображения (как в списке форматов)
@@ -173,7 +230,7 @@ def download_thumbnail(url, thumbnail_folder, video_id=None, info=None):
         
         # Используем video_id или генерируем из URL
         if not video_id:
-            video_id = info.get('id') or info.get('display_id') or str(hash(url))
+            video_id = get_video_id(info, url)
         
         # Определяем расширение из URL или используем jpg по умолчанию
         ext = 'jpg'
@@ -371,7 +428,7 @@ def get_formats(url, thumbnail_folder=None):
         # Скачиваем thumbnail если указана папка
         if thumbnail_folder:
             try:
-                video_id = info.get('id') or info.get('display_id') or str(hash(url))
+                video_id = get_video_id(info, url)
                 thumbnail_path = download_thumbnail(url, thumbnail_folder, video_id, info=info)
                 result["thumbnail_path"] = thumbnail_path
             except Exception as e:
@@ -387,18 +444,10 @@ def get_formats(url, thumbnail_folder=None):
 def create_progress_hook(progress_callback, paused_flag, cancelled_flag, final_file_callback):
     """Создает функцию progress_hook для yt-dlp"""
     def progress_hook(d):
-        if isinstance(cancelled_flag, dict):
-            if cancelled_flag.get("value", False):
-                raise Exception("Download cancelled by user.")
-        elif cancelled_flag.get():
+        if get_flag_value(cancelled_flag):
             raise Exception("Download cancelled by user.")
         
-        while True:
-            if isinstance(paused_flag, dict):
-                if not paused_flag.get("value", False):
-                    break
-            elif not paused_flag.get():
-                break
+        while get_flag_value(paused_flag):
             time.sleep(0.1)
 
         status = d.get('status', '').lower()

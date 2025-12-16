@@ -112,6 +112,25 @@ function hideLoadingOverlay() {
     }
 }
 
+// Извлечение имени файла из пути
+function extractFilename(path) {
+    return path.split('/').pop() || path.split('\\').pop();
+}
+
+// Создание thumbnail элемента
+function createThumbnailElement(thumbnailPath, altText, className) {
+    if (!thumbnailPath) return null;
+    const thumbnail = document.createElement('img');
+    thumbnail.className = className;
+    const filename = extractFilename(thumbnailPath);
+    thumbnail.src = `/api/thumbnail/${filename}`;
+    thumbnail.alt = altText || 'Thumbnail';
+    thumbnail.onerror = function() {
+        this.style.display = 'none';
+    };
+    return thumbnail;
+}
+
 // Настройка глобальной обработки ошибок
 function setupErrorHandling() {
     // Обработка необработанных ошибок
@@ -394,15 +413,10 @@ function showVideoPreview(title, thumbnailPath) {
     
     // Thumbnail
     if (thumbnailPath) {
-        const thumbnail = document.createElement('img');
-        thumbnail.className = 'video-preview-thumbnail';
-        const filename = thumbnailPath.split('/').pop() || thumbnailPath.split('\\').pop();
-        thumbnail.src = `/api/thumbnail/${filename}`;
-        thumbnail.alt = title || 'Thumbnail';
-        thumbnail.onerror = function() {
-            this.style.display = 'none';
-        };
-        videoPreviewItem.appendChild(thumbnail);
+        const thumbnail = createThumbnailElement(thumbnailPath, title || 'Thumbnail', 'video-preview-thumbnail');
+        if (thumbnail) {
+            videoPreviewItem.appendChild(thumbnail);
+        }
     }
     
     const info = document.createElement('div');
@@ -591,15 +605,10 @@ async function loadQueue() {
             
             // Thumbnail
             if (item.thumbnail_path) {
-                const thumbnail = document.createElement('img');
-                thumbnail.className = 'queue-item-thumbnail';
-                const filename = item.thumbnail_path.split('/').pop() || item.thumbnail_path.split('\\').pop();
-                thumbnail.src = `/api/thumbnail/${filename}`;
-                thumbnail.alt = item.title || 'Thumbnail';
-                thumbnail.onerror = function() {
-                    this.style.display = 'none';
-                };
-                div.appendChild(thumbnail);
+                const thumbnail = createThumbnailElement(item.thumbnail_path, item.title || 'Thumbnail', 'queue-item-thumbnail');
+                if (thumbnail) {
+                    div.appendChild(thumbnail);
+                }
             }
             
             const info = document.createElement('div');
@@ -759,15 +768,10 @@ async function loadHistory() {
 
             // Thumbnail
             if (item.thumbnail_path) {
-                const thumbnail = document.createElement('img');
-                thumbnail.className = 'history-item-thumbnail';
-                const filename = item.thumbnail_path.split('/').pop() || item.thumbnail_path.split('\\').pop();
-                thumbnail.src = `/api/thumbnail/${filename}`;
-                thumbnail.alt = item.title || 'Thumbnail';
-                thumbnail.onerror = function() {
-                    this.style.display = 'none';
-                };
-                div.appendChild(thumbnail);
+                const thumbnail = createThumbnailElement(item.thumbnail_path, item.title || 'Thumbnail', 'history-item-thumbnail');
+                if (thumbnail) {
+                    div.appendChild(thumbnail);
+                }
             }
 
             const info = document.createElement('div');

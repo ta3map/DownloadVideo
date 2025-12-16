@@ -17,7 +17,8 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
-    CustomLogger, check_ffmpeg, download_thumbnail, format_format_label
+    CustomLogger, check_ffmpeg, download_thumbnail, format_format_label,
+    get_video_id, open_file_path, open_folder_path, safe_delete_thumbnail
 )
 from logger import log_frontend_error, log_info, log_error, log_warning, log_debug
 from database import Database
@@ -268,7 +269,9 @@ def start_queue_download(queue_id, queue_item):
             thumbnail_path = queue_item.get('thumbnail_path')
             if not thumbnail_path:
                 try:
-                    video_id = str(hash(url))[:16]  # Используем хеш URL как ID
+                    video_id = get_video_id(url=url)
+                    if video_id:
+                        video_id = video_id[:16]  # Обрезаем до 16 символов для совместимости
                     thumbnail_path = download_thumbnail(url, THUMBNAILS_FOLDER, video_id)
                 except Exception as e:
                     log_error(f"Error downloading thumbnail: {e}")
@@ -467,12 +470,7 @@ def delete_history_item(history_id):
     
     # Удаляем thumbnail файл если он существует
     if history_item and history_item.get('thumbnail_path'):
-        thumbnail_path = history_item['thumbnail_path']
-        if os.path.exists(thumbnail_path) and os.path.isfile(thumbnail_path):
-            try:
-                os.remove(thumbnail_path)
-            except Exception as e:
-                log_error(f"Error deleting thumbnail {thumbnail_path}: {e}")
+        safe_delete_thumbnail(history_item['thumbnail_path'])
     
     db.delete_history_item(history_id)
     return jsonify({'status': 'deleted'})
@@ -491,13 +489,7 @@ def open_file():
     data = request.json
     file_path = data.get('file_path', '')
     if file_path and os.path.exists(file_path):
-        system = platform.system()
-        if system == 'Windows':
-            os.startfile(file_path)
-        elif system == 'Darwin':
-            subprocess.Popen(['open', file_path])
-        else:
-            subprocess.Popen(['xdg-open', file_path])
+        open_file_path(file_path)
         return jsonify({'status': 'opened'})
     return jsonify({'error': 'File not found'}), 404
 
@@ -609,13 +601,7 @@ def open_folder():
     if file_path:
         folder_path = os.path.dirname(file_path) if os.path.isfile(file_path) else file_path
         if os.path.exists(folder_path):
-            system = platform.system()
-            if system == 'Windows':
-                os.startfile(folder_path)
-            elif system == 'Darwin':
-                subprocess.Popen(['open', folder_path])
-            else:
-                subprocess.Popen(['xdg-open', folder_path])
+            open_folder_path(folder_path)
             return jsonify({'status': 'opened'})
     return jsonify({'error': 'Folder not found'}), 404
 
@@ -632,12 +618,7 @@ def delete_queue_item(queue_id):
     
     # Удаляем thumbnail файл если он существует
     if queue_item and queue_item.get('thumbnail_path'):
-        thumbnail_path = queue_item['thumbnail_path']
-        if os.path.exists(thumbnail_path) and os.path.isfile(thumbnail_path):
-            try:
-                os.remove(thumbnail_path)
-            except Exception as e:
-                log_error(f"Error deleting thumbnail {thumbnail_path}: {e}")
+        safe_delete_thumbnail(queue_item['thumbnail_path'])
     
     db.delete_queue_item(queue_id)
     return jsonify({'status': 'deleted'})
