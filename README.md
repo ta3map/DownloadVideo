@@ -14,14 +14,14 @@ A simple desktop application for downloading videos from various platforms using
 
 ## Screenshots
 
-### Main Interface
-![Main Interface](screenshots/main.png)
-
-### Queue Management
-![Queue Management](screenshots/queue.png)
-
-### Download History
-![Download History](screenshots/history.png)
+<p align="center">
+  <strong>Main Interface</strong><br>
+  <img src="screenshots/main.png" alt="Main Interface"><br><br>
+  <strong>Queue Management</strong><br>
+  <img src="screenshots/queue.png" alt="Queue Management"><br><br>
+  <strong>Download History</strong><br>
+  <img src="screenshots/history.png" alt="Download History">
+</p>
 
 
 ## Run from the sourcecode

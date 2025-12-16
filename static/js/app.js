@@ -30,7 +30,9 @@ const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const themeIcon = document.getElementById('theme-icon');
 const htmlElement = document.documentElement;
-const splashScreen = document.getElementById('splash-screen');
+const loadingScreen = document.getElementById('loading-screen');
+const loadingTitle = document.getElementById('loading-title');
+const loadingContent = loadingScreen ? loadingScreen.querySelector('.loading-content') : null;
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -65,16 +67,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadQueue()
     ]);
     setupEventListeners();
-    hideSplash();
+    hideLoading();
 });
 
-// Скрытие splash screen
-function hideSplash() {
-    if (splashScreen) {
-        splashScreen.classList.add('hidden');
+// Скрытие loading screen
+function hideLoading() {
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden');
         setTimeout(() => {
-            if (splashScreen) {
-                splashScreen.style.display = 'none';
+            if (loadingScreen) {
+                loadingScreen.style.display = 'none';
+            }
+        }, 500);
+    }
+}
+
+// Показ overlay загрузки (переиспользует loading-screen)
+function showLoadingOverlay(text = 'Getting formats') {
+    if (loadingScreen && loadingTitle) {
+        loadingTitle.textContent = text;
+        loadingScreen.classList.add('loading-overlay');
+        loadingScreen.style.display = 'flex';
+        loadingScreen.classList.remove('hidden');
+    }
+}
+
+// Скрытие overlay загрузки (переиспользует loading-screen)
+function hideLoadingOverlay() {
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden');
+        setTimeout(() => {
+            if (loadingScreen) {
+                loadingScreen.style.display = 'none';
+                loadingScreen.classList.remove('loading-overlay');
+                // Восстанавливаем оригинальный текст
+                if (loadingTitle) {
+                    loadingTitle.textContent = 'Video Downloader';
+                }
             }
         }, 500);
     }
@@ -268,7 +297,7 @@ async function handleFetchFormats() {
     
     currentVideoTitle = null;
     fetchFormatsBtn.disabled = true;
-    showStatus('Fetching formats...', 'info');
+    showLoadingOverlay('Getting formats');
 
     try {
         const response = await fetch('/api/fetch-formats', {
@@ -290,6 +319,7 @@ async function handleFetchFormats() {
         // Проверяем результат каждые 500мс
         checkFormatsResult();
     } catch (error) {
+        hideLoadingOverlay();
         showStatus('Error: ' + error.message, 'error');
         fetchFormatsBtn.disabled = false;
         logErrorToBackend('fetchFormats', error.message, error.stack, new Date().toISOString());
@@ -310,6 +340,7 @@ async function checkFormatsResult() {
 
         if (data.formats) {
             // Форматы получены
+            hideLoadingOverlay();
             formatsSelect.innerHTML = '';
             data.formats.forEach((fmt, index) => {
                 const option = document.createElement('option');
@@ -329,6 +360,7 @@ async function checkFormatsResult() {
             setTimeout(checkFormatsResult, 500);
         }
     } catch (error) {
+        hideLoadingOverlay();
         showStatus('Error: ' + error.message, 'error');
         fetchFormatsBtn.disabled = false;
         currentFetchTaskId = null;
@@ -671,22 +703,25 @@ async function loadHistory() {
             copyUrlBtn.className = 'action-btn';
             copyUrlBtn.textContent = '🔗';
             copyUrlBtn.title = 'Copy URL';
-            copyUrlBtn.onclick = () => copyHistoryUrl(item.url);
+            copyUrlBtn.onclick = (e) => {
+                e.stopPropagation();
+                copyHistoryUrl(item.url);
+            };
             buttonsDiv.appendChild(copyUrlBtn);
             
             if (item.status === 'finished' && item.file_path) {
-                const openFileBtn = document.createElement('button');
-                openFileBtn.className = 'action-btn';
-                openFileBtn.textContent = '📄';
-                openFileBtn.title = 'Open file';
-                openFileBtn.onclick = () => openHistoryFile(item.id);
-                buttonsDiv.appendChild(openFileBtn);
+                // Делаем элемент истории кликабельным для открытия файла
+                div.classList.add('history-item-clickable');
+                div.onclick = () => openHistoryFile(item.id);
                 
                 const openFolderBtn = document.createElement('button');
                 openFolderBtn.className = 'action-btn';
                 openFolderBtn.textContent = '📁';
                 openFolderBtn.title = 'Open folder';
-                openFolderBtn.onclick = () => openHistoryFolder(item.id);
+                openFolderBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openHistoryFolder(item.id);
+                };
                 buttonsDiv.appendChild(openFolderBtn);
             }
             
@@ -694,7 +729,10 @@ async function loadHistory() {
             deleteBtn.className = 'delete-btn';
             deleteBtn.textContent = '×';
             deleteBtn.title = 'Delete';
-            deleteBtn.onclick = () => showDeleteModal(item.id);
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                showDeleteModal(item.id);
+            };
             buttonsDiv.appendChild(deleteBtn);
             
             div.appendChild(buttonsDiv);
