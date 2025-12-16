@@ -29,6 +29,7 @@ const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const themeIcon = document.getElementById('theme-icon');
 const htmlElement = document.documentElement;
+const splashScreen = document.getElementById('splash-screen');
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -58,10 +59,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadTheme();
     await loadUIState();
     await loadConfig();
-    loadHistory();
-    loadQueue();
+    await Promise.all([
+        loadHistory(),
+        loadQueue()
+    ]);
     setupEventListeners();
+    hideSplash();
 });
+
+// Скрытие splash screen
+function hideSplash() {
+    if (splashScreen) {
+        splashScreen.classList.add('hidden');
+        setTimeout(() => {
+            if (splashScreen) {
+                splashScreen.style.display = 'none';
+            }
+        }, 500);
+    }
+}
 
 // Настройка глобальной обработки ошибок
 function setupErrorHandling() {
