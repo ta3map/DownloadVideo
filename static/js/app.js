@@ -355,8 +355,49 @@ async function checkFormatsResult() {
             formatsSelect.innerHTML = '';
             data.formats.forEach((fmt, index) => {
                 const option = document.createElement('option');
+                
+                // Формируем понятную метку разрешения
+                let resolutionLabel = '';
+                if (fmt.height) {
+                    const height = fmt.height;
+                    if (height >= 2160) {
+                        resolutionLabel = '4K (2160p)';
+                    } else if (height >= 1440) {
+                        resolutionLabel = '1440p';
+                    } else if (height >= 1080) {
+                        resolutionLabel = '1080p';
+                    } else if (height >= 720) {
+                        resolutionLabel = '720p';
+                    } else if (height >= 480) {
+                        resolutionLabel = '480p';
+                    } else if (height >= 360) {
+                        resolutionLabel = '360p';
+                    } else if (height >= 240) {
+                        resolutionLabel = '240p';
+                    } else if (height >= 144) {
+                        resolutionLabel = '144p';
+                    } else {
+                        resolutionLabel = `${height}p`;
+                    }
+                } else {
+                    resolutionLabel = fmt.resolution || 'unknown';
+                }
+                
+                // Формируем полную метку
+                const parts = [resolutionLabel];
+                if (fmt.ext && fmt.ext !== 'unknown') {
+                    parts.push(fmt.ext.toUpperCase());
+                }
+                if (fmt.format_note) {
+                    parts.push(fmt.format_note);
+                }
+                
                 const hasFfmpeg = fmt.format && typeof fmt.format === 'string' && fmt.format.includes('+');
-                const label = `${fmt.resolution || 'audio'} | ${fmt.ext} | ${fmt.format_note || ''}${hasFfmpeg ? ' +ffmpeg' : ''}`;
+                if (hasFfmpeg) {
+                    parts.push('+ffmpeg');
+                }
+                
+                const label = parts.join(' | ');
                 option.textContent = label;
                 option.value = fmt.format_id;
                 formatsSelect.appendChild(option);
@@ -644,14 +685,19 @@ async function loadQueue() {
     
     const hasActiveDownloads = data.queue.some(item => item.status === 'downloading' && !item.paused);
     
+    // Проверяем, есть ли загрузки с прогрессом >= 1%
+    const hasProgress = activeProgresses.length > 0 && activeProgresses.some(progress => progress >= 1);
+    
     if (activeProgresses.length > 0 && hasActiveDownloads) {
         const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
         updateProgress(avgProgress);
         updateWindowTitle(Math.round(avgProgress));
         progressSection.style.display = 'block';
         
-        // Скрываем overlay загрузки, так как загрузка началась
-        hideLoadingOverlay();
+        // Скрываем overlay загрузки только когда прогресс >= 1%
+        if (hasProgress) {
+            hideLoadingOverlay();
+        }
         
         // Скрываем элементы формы и делаем очередь неактивной во время загрузки
         toggleFormElementsVisibility(false);

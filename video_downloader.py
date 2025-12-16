@@ -144,7 +144,7 @@ def download_thumbnail(url, thumbnail_folder, video_id=None, info=None):
 
 def get_formats(url, thumbnail_folder=None):
     """
-    Получает список доступных форматов для видео
+    Получает список доступных форматов для видео с фильтрацией
     
     Args:
         url: URL видео
@@ -158,22 +158,156 @@ def get_formats(url, thumbnail_folder=None):
         video_title = info.get("title", "video")
         fetched_formats = info.get("formats", [])
         
-        full_formats = []
+        # Стандартные разрешения (в пикселях по высоте)
+        # Включаем стандартные и некоторые распространенные промежуточные
+        STANDARD_HEIGHTS = [144, 240, 270, 360, 480, 720, 1080, 1440, 2160]
+        
+        # Фильтруем и обрабатываем форматы
+        video_formats = []
         for fmt in fetched_formats:
-            full_fmt = {
+            vcodec = fmt.get("vcodec", "none")
+            acodec = fmt.get("acodec", "none")
+            
+            # Пропускаем аудио-только форматы
+            if vcodec == "none" or vcodec is None:
+                continue
+            
+            # Получаем высоту видео
+            height = fmt.get("height")
+            if not height:
+                # Пытаемся извлечь из resolution
+                resolution = fmt.get("resolution", "")
+                if resolution and "x" in resolution:
+                    try:
+                        height = int(resolution.split("x")[1])
+                    except:
+                        continue
+                else:
+                    continue
+            
+            # Пропускаем нестандартные разрешения (или добавляем их в конец)
+            # Но сначала собираем все форматы, потом отфильтруем
+            
+            format_info = {
                 "format_id": fmt.get("format_id"),
-                "vcodec": fmt.get("vcodec", "none"),
-                "acodec": fmt.get("acodec", "none"),
-                "resolution": fmt.get("resolution", "audio"),
+                "vcodec": vcodec,
+                "acodec": acodec,
+                "height": height,
+                "width": fmt.get("width"),
+                "fps": fmt.get("fps"),
                 "ext": fmt.get("ext", "unknown"),
                 "format_note": fmt.get("format_note", ""),
-                "format": fmt.get("format", "")
+                "format": fmt.get("format", ""),
+                "filesize": fmt.get("filesize"),
+                "tbr": fmt.get("tbr"),  # Total bitrate
+                "vbr": fmt.get("vbr"),  # Video bitrate
+                "abr": fmt.get("abr"),  # Audio bitrate
             }
-            full_formats.append(full_fmt)
+            
+            # Формируем resolution строку
+            if format_info["width"] and format_info["height"]:
+                format_info["resolution"] = f"{format_info['width']}x{format_info['height']}"
+            else:
+                format_info["resolution"] = f"{height}p"
+            
+            video_formats.append(format_info)
+        
+        # Группируем по разрешению и выбираем лучший формат для каждого
+        formats_by_height = {}
+        for fmt in video_formats:
+            height = fmt["height"]
+            
+            # Если это стандартное разрешение или близкое к стандартному
+            # Находим ближайшее стандартное разрешение
+            if STANDARD_HEIGHTS:
+                closest_standard = min(STANDARD_HEIGHTS, key=lambda x: abs(x - height))
+                # Допуск 15 пикселей для группировки близких разрешений
+                # Это позволяет группировать похожие разрешения (например, 1080 и 1088)
+                if abs(closest_standard - height) <= 15:
+                    height_key = closest_standard
+                else:
+                    # Для нестандартных разрешений используем оригинальную высоту
+                    # но только если они не слишком далеки от стандартных
+                    if height < 50 or height > 4320:  # Слишком маленькие или большие пропускаем
+                        continue
+                    height_key = height
+            else:
+                height_key = height
+            
+            if height_key not in formats_by_height:
+                formats_by_height[height_key] = []
+            formats_by_height[height_key].append(fmt)
+        
+        # Выбираем лучший формат для каждого разрешения
+        filtered_formats = []
+        for height_key in sorted(formats_by_height.keys()):
+            candidates = formats_by_height[height_key]
+            
+            # Сортируем кандидатов по приоритету:
+            # 1. Форматы с аудио (если есть)
+            # 2. Лучший битрейт
+            # 3. Предпочтительные кодеки (H.264 > VP9 > AV1)
+            # 4. Предпочтительные контейнеры (mp4 > webm)
+            
+            def format_score(fmt):
+                score = 0
+                
+                # Бонус за наличие аудио
+                if fmt.get("acodec") and fmt.get("acodec") != "none":
+                    score += 1000
+                
+                # Бонус за битрейт
+                tbr = fmt.get("tbr") or fmt.get("vbr") or 0
+                score += tbr
+                
+                # Бонус за предпочтительные кодеки
+                vcodec = fmt.get("vcodec", "").lower()
+                if "h264" in vcodec or "avc" in vcodec:
+                    score += 100
+                elif "vp9" in vcodec:
+                    score += 50
+                elif "av1" in vcodec:
+                    score += 25
+                
+                # Бонус за предпочтительные контейнеры
+                ext = fmt.get("ext", "").lower()
+                if ext == "mp4":
+                    score += 10
+                elif ext == "webm":
+                    score += 5
+                
+                return score
+            
+            # Выбираем лучший формат
+            best_format = max(candidates, key=format_score)
+            
+            # Формируем финальный формат для отображения
+            final_fmt = {
+                "format_id": best_format["format_id"],
+                "vcodec": best_format["vcodec"],
+                "acodec": best_format["acodec"],
+                "resolution": best_format["resolution"],
+                "height": best_format["height"],
+                "ext": best_format["ext"],
+                "format_note": best_format.get("format_note", ""),
+                "format": best_format["format"]
+            }
+            
+            # Добавляем информацию о необходимости мерджа
+            needs_merge = (best_format.get("acodec") == "none" or 
+                          best_format.get("acodec") is None)
+            if needs_merge:
+                final_fmt["format_note"] = (final_fmt.get("format_note", "") + 
+                                           (" +audio" if final_fmt.get("format_note") else "+audio"))
+            
+            filtered_formats.append(final_fmt)
+        
+        # Сортируем по высоте (от меньшего к большему)
+        filtered_formats.sort(key=lambda x: x.get("height", 0))
         
         result = {
             "title": video_title,
-            "formats": full_formats
+            "formats": filtered_formats
         }
         
         # Скачиваем thumbnail если указана папка
