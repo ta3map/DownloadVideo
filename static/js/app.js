@@ -1,6 +1,7 @@
 // Глобальные переменные
 let currentFetchTaskId = null;
 let currentVideoTitle = null;
+const originalWindowTitle = document.title;
 
 // Элементы DOM
 const urlInput = document.getElementById('url-input');
@@ -355,6 +356,71 @@ function updateProgress(percent) {
     progressText.textContent = Math.round(percent) + '%';
 }
 
+// Обновление заголовка окна с прогрессом
+function updateWindowTitle(progress) {
+    if (progress !== null && progress !== undefined) {
+        document.title = `${progress}% - ${originalWindowTitle}`;
+    } else {
+        document.title = originalWindowTitle;
+    }
+}
+
+// Управление видимостью элементов выше очереди
+function toggleFormElementsVisibility(show) {
+    const container = document.querySelector('.container');
+    const queueSection = document.getElementById('queue-section');
+    
+    if (!container || !queueSection) return;
+    
+    // Находим все form-group и button-group
+    const allElements = container.querySelectorAll('.form-group, .button-group, #formats-section');
+    
+    allElements.forEach(element => {
+        // Проверяем, находится ли элемент выше queue-section (перед ним в DOM)
+        const position = queueSection.compareDocumentPosition(element);
+        const isBefore = (position & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+        
+        // Также проверяем, что элемент не внутри queue-section или history-section
+        const isInsideQueue = queueSection.contains(element);
+        const historySection = document.getElementById('history-section');
+        const isInsideHistory = historySection && historySection.contains(element);
+        
+        if (isBefore && !isInsideQueue && !isInsideHistory) {
+            // Сохраняем исходное состояние при первом скрытии
+            if (!show && !element.hasAttribute('data-original-display')) {
+                const currentDisplay = window.getComputedStyle(element).display;
+                element.setAttribute('data-original-display', currentDisplay === 'none' ? '' : currentDisplay);
+            }
+            
+            if (show) {
+                // Восстанавливаем исходное состояние
+                const originalDisplay = element.getAttribute('data-original-display');
+                if (originalDisplay !== null) {
+                    element.style.display = originalDisplay || '';
+                    element.removeAttribute('data-original-display');
+                } else {
+                    // Если не было сохранено, используем значение по умолчанию
+                    element.style.display = '';
+                }
+            } else {
+                // Скрываем элемент
+                element.style.display = 'none';
+            }
+        }
+    });
+}
+
+// Управление активностью списка очереди
+function setQueueListActive(active) {
+    if (queueList) {
+        if (active) {
+            queueList.classList.remove('queue-list-inactive');
+        } else {
+            queueList.classList.add('queue-list-inactive');
+        }
+    }
+}
+
 // Сохранение UI состояния
 async function saveUIState() {
     const state = {
@@ -448,7 +514,7 @@ async function loadQueue() {
                 'cancelled': 'Cancelled'
             }[item.status] || item.status;
             status.textContent = `Status: ${statusText}`;
-            if (item.progress !== undefined && item.status === 'downloading') {
+            if (item.progress !== undefined && item.status === 'downloading' && !item.paused) {
                 status.textContent += ` (${Math.round(item.progress)}%)`;
                 activeProgresses.push(item.progress);
             }
@@ -471,17 +537,32 @@ async function loadQueue() {
         queueSection.style.display = 'none';
     }
     
-    if (activeProgresses.length > 0) {
+    const hasActiveDownloads = data.queue.some(item => item.status === 'downloading' && !item.paused);
+    
+    if (activeProgresses.length > 0 && hasActiveDownloads) {
         const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
         updateProgress(avgProgress);
+        updateWindowTitle(Math.round(avgProgress));
         progressSection.style.display = 'block';
+        
+        // Скрываем элементы формы и делаем очередь неактивной во время загрузки
+        toggleFormElementsVisibility(false);
+        setQueueListActive(false);
     } else {
+        updateWindowTitle(null);
         progressSection.style.display = 'none';
+        
+        // Показываем элементы формы и делаем очередь активной когда нет активных загрузок или на паузе
+        toggleFormElementsVisibility(true);
+        setQueueListActive(true);
     }
     
-    const hasActiveDownloads = data.queue.some(item => item.status === 'downloading');
     if (!hasActiveDownloads) {
         stopProgressUpdate();
+        updateWindowTitle(null);
+        // Убеждаемся, что все элементы показаны
+        toggleFormElementsVisibility(true);
+        setQueueListActive(true);
     }
     
     if (data.queue.length < previousQueueLength) {
@@ -513,6 +594,11 @@ async function handleQueueStop() {
     await fetch('/api/queue/stop', { method: 'POST' });
     showStatus('Download stopped', 'info');
     stopProgressUpdate();
+    
+    // При остановке показываем элементы формы и делаем очередь активной
+    toggleFormElementsVisibility(true);
+    setQueueListActive(true);
+    
     loadQueue();
 }
 

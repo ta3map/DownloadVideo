@@ -362,6 +362,12 @@ input[type="checkbox"] {
     flex-direction: column;
     gap: 10px;
     margin-bottom: 15px;
+    transition: opacity 0.3s ease;
+}
+
+.queue-list-inactive {
+    pointer-events: none;
+    opacity: 0.6;
 }
 
 .queue-item {

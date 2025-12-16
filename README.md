@@ -2,9 +2,7 @@
 
 A simple desktop application for downloading videos from various platforms using yt-dlp.
 
-## Download
-
-Latest releases are available on the [Releases](https://github.com/ta3map/DownloadVideo/releases) page.
+## [Download](https://github.com/ta3map/DownloadVideo/releases)
 
 ## Usage
 
