@@ -2,6 +2,10 @@
 
 A simple desktop application for downloading videos from various platforms using yt-dlp.
 
+## Releases
+
+Latest releases are available on the [Releases](https://github.com/ta3map/DownloadVideo/releases) page.
+
 ## Features
 
 - Download videos in various formats
@@ -21,7 +25,7 @@ A simple desktop application for downloading videos from various platforms using
 1. Clone the repository
 2. Install dependencies:
 ```bash
-pip install flask pywebview yt-dlp
+pip install -r requirements.txt
 ```
 
 3. Run the application:
@@ -50,5 +54,5 @@ python app.py
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
