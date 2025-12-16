@@ -2,7 +2,9 @@
 let currentFetchTaskId = null;
 let currentVideoTitle = null;
 let currentThumbnailPath = null;
+let currentFormats = []; // Сохраняем список форматов для быстрого доступа к label
 const originalWindowTitle = document.title;
+let audioContext = null; // Глобальный аудиоконтекст для воспроизведения звуков
 
 // Элементы DOM
 const urlInput = document.getElementById('url-input');
@@ -33,6 +35,7 @@ const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const themeIcon = document.getElementById('theme-icon');
 const soundToggle = document.getElementById('sound-toggle');
+const soundToggleIcon = document.querySelector('.sound-toggle-icon');
 const htmlElement = document.documentElement;
 const loadingScreen = document.getElementById('loading-screen');
 const loadingTitle = document.getElementById('loading-title');
@@ -64,7 +67,6 @@ async function logErrorToBackend(type, message, stack, timestamp) {
 document.addEventListener('DOMContentLoaded', async () => {
     setupErrorHandling();
     progressSection.style.display = 'none';
-    await loadTheme();
     await loadUIState();
     await loadConfig();
     await Promise.all([
@@ -72,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadQueue()
     ]);
     setupEventListeners();
+    updateSoundIcon(); // Устанавливаем правильную иконку звука при загрузке
     hideLoading();
 });
 
@@ -171,19 +174,6 @@ function setupErrorHandling() {
     };
 }
 
-// Загрузка темы
-async function loadTheme() {
-    try {
-        const response = await fetch('/api/ui-state');
-        const state = await response.json();
-        const theme = state.theme || htmlElement.getAttribute('data-theme') || 'light';
-        applyTheme(theme);
-    } catch (error) {
-        console.error('Error loading theme:', error);
-        const theme = htmlElement.getAttribute('data-theme') || 'light';
-        applyTheme(theme);
-    }
-}
 
 // Применение темы
 function applyTheme(theme) {
@@ -191,20 +181,19 @@ function applyTheme(theme) {
     if (themeIcon) {
         themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
     }
+    if (themeToggleBtn) {
+        themeToggleBtn.checked = theme === 'dark';
+    }
 }
 
 // Переключение темы
 async function handleThemeToggle() {
-    const currentTheme = htmlElement.getAttribute('data-theme') || 'light';
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    const newTheme = themeToggleBtn.checked ? 'dark' : 'light';
     applyTheme(newTheme);
     
+    // Используем общий механизм сохранения
     try {
-        await fetch('/api/ui-state', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme: newTheme })
-        });
+        await saveUIState();
     } catch (error) {
         console.error('Error saving theme:', error);
         logErrorToBackend('saveTheme', error.message, error.stack, new Date().toISOString());
@@ -225,11 +214,63 @@ async function loadConfig() {
     }
 }
 
+// Обновление иконки звука
+function updateSoundIcon() {
+    if (soundToggleIcon) {
+        soundToggleIcon.textContent = soundToggle.checked ? '🎵' : '🔇';
+    }
+}
+
+// Инициализация аудиоконтекста
+function initAudioContext() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // Активируем контекст, если он suspended
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+    return audioContext;
+}
+
+// Внутренняя функция воспроизведения звука
+function playSoundInternal(ctx) {
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 2.5);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 2.5);
+}
+
 // Настройка обработчиков событий
 function setupEventListeners() {
-    themeToggleBtn.addEventListener('click', handleThemeToggle);
+    themeToggleBtn.addEventListener('change', handleThemeToggle);
     soundToggle.addEventListener('change', () => {
+        updateSoundIcon();
         saveUIState();
+        // При включении звука инициализируем контекст и воспроизводим тестовый звук
+        if (soundToggle.checked) {
+            const ctx = initAudioContext();
+            // Если контекст suspended, активируем и затем воспроизводим
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(() => {
+                    playSoundInternal(ctx);
+                }).catch(err => {
+                    console.error('Failed to resume audio context:', err);
+                });
+            } else {
+                playSoundInternal(ctx);
+            }
+        }
     });
     pasteUrlBtn.addEventListener('click', handlePasteUrl);
     selectFolderBtn.addEventListener('click', handleSelectFolder);
@@ -341,6 +382,7 @@ async function handleFetchFormats() {
     
     currentVideoTitle = null;
     currentThumbnailPath = null;
+    currentFormats = []; // Очищаем предыдущие форматы
     hideVideoPreview();
     fetchFormatsBtn.disabled = true;
     showLoadingOverlay('Getting formats', true);
@@ -388,6 +430,8 @@ async function checkFormatsResult() {
             // Форматы получены
             hideLoadingOverlay();
             formatsSelect.innerHTML = '';
+            // Сохраняем форматы для быстрого доступа к label
+            currentFormats = data.formats;
             data.formats.forEach((fmt, index) => {
                 const option = document.createElement('option');
                 
@@ -494,21 +538,22 @@ function updateWindowTitle(progress) {
 
 // Воспроизведение звука завершения загрузки
 function playCompletionSound() {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
+    try {
+        const ctx = initAudioContext();
+        
+        // Если контекст suspended, пытаемся активировать
+        if (ctx.state === 'suspended') {
+            ctx.resume().then(() => {
+                playSoundInternal(ctx);
+            }).catch(err => {
+                console.error('Failed to resume audio context:', err);
+            });
+        } else {
+            playSoundInternal(ctx);
+        }
+    } catch (error) {
+        console.error('Error playing completion sound:', error);
+    }
 }
 
 // Управление видимостью элементов выше очереди
@@ -575,7 +620,8 @@ async function saveUIState() {
         audio_only: audioOnlyCheckbox.checked,
         download_folder: downloadFolderInput.value,
         formats_visible: formatsSection.style.display !== 'none',
-        sound_enabled: soundToggle.checked
+        sound_enabled: soundToggle.checked ? 'true' : 'false', // Сохраняем как строку для консистентности
+        theme: themeToggleBtn.checked ? 'dark' : 'light' // Добавляем тему в общее сохранение
     };
     await fetch('/api/ui-state', {
         method: 'POST',
@@ -595,7 +641,15 @@ async function loadUIState() {
     if (state.download_folder) downloadFolderInput.value = state.download_folder;
     if (state.formats_visible === 'true') formatsSection.style.display = 'block';
     if (state.audio_only === 'true') handleAudioOnlyChange();
-    if (state.sound_enabled === 'true') soundToggle.checked = true;
+    // Восстанавливаем состояние звука (может быть строкой 'True'/'False' или 'true'/'false', или булевым значением)
+    if (state.sound_enabled !== undefined) {
+        const soundValue = String(state.sound_enabled).toLowerCase();
+        soundToggle.checked = soundValue === 'true';
+    }
+    // Восстанавливаем тему (используем сохраненную или системную из data-theme атрибута)
+    const theme = state.theme || htmlElement.getAttribute('data-theme') || 'light';
+    applyTheme(theme);
+    updateSoundIcon();
 }
 
 // Добавление в очередь
@@ -614,6 +668,17 @@ async function handleAddToQueue() {
         return;
     }
 
+    // Находим format_label из сохраненных форматов
+    let formatLabel = null;
+    if (audioOnly) {
+        formatLabel = 'Audio only';
+    } else if (formatId && currentFormats.length > 0) {
+        const selectedFormat = currentFormats.find(fmt => fmt.format_id === formatId);
+        if (selectedFormat) {
+            formatLabel = selectedFormat.label || formatId;
+        }
+    }
+
     await fetch('/api/queue/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -623,7 +688,8 @@ async function handleAddToQueue() {
             format_id: formatId,
             audio_only: audioOnly,
             download_folder: downloadFolderInput.value,
-            thumbnail_path: currentThumbnailPath || null
+            thumbnail_path: currentThumbnailPath || null,
+            format_label: formatLabel // Передаем format_label с фронтенда
         })
     });
 
@@ -768,10 +834,10 @@ async function handleQueueStart() {
 
 // Пауза очереди
 async function handleQueuePause() {
-    const isPaused = queuePauseBtn.textContent === 'Resume';
+    const isPaused = queuePauseBtn.textContent.includes('Resume');
     const endpoint = isPaused ? 'resume' : 'pause';
     await fetch(`/api/queue/${endpoint}`, { method: 'POST' });
-    queuePauseBtn.textContent = isPaused ? 'Pause' : 'Resume';
+    queuePauseBtn.textContent = isPaused ? '⏸️ Pause' : '▶️ Resume';
     showStatus(isPaused ? 'Download resumed' : 'Download paused', 'info');
     loadQueue();
 }

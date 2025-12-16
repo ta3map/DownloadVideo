@@ -377,29 +377,33 @@ def queue_add():
     audio_only = data.get('audio_only', False)
     download_folder = data.get('download_folder', DOWNLOAD_FOLDER)
     thumbnail_path = data.get('thumbnail_path')
+    format_label = data.get('format_label')  # Получаем format_label с фронтенда
     
     if not url:
         return jsonify({'error': 'URL не указан'}), 400
     
-    # Формируем format_label
-    format_label = None
-    if audio_only:
-        format_label = 'Audio only'
-    elif format_id:
-        # Получаем форматы для формирования label
-        try:
-            result = get_formats(url)
-            formats = result.get('formats', [])
-            for fmt in formats:
-                if fmt.get('format_id') == format_id:
-                    format_label = format_format_label(fmt)
-                    break
-            # Если формат не найден, используем format_id как fallback
-            if not format_label:
-                format_label = format_id
-        except Exception as e:
-            log_debug(f"Error getting format label: {e}")
-            # В случае ошибки используем format_id как fallback
+    # Формируем format_label только если он не передан с фронтенда
+    if not format_label:
+        if audio_only:
+            format_label = 'Audio only'
+        elif format_id:
+            # Fallback: получаем форматы только если format_label не был передан
+            # (это может произойти при прямом вызове API или старом фронтенде)
+            try:
+                result = get_formats(url)
+                formats = result.get('formats', [])
+                for fmt in formats:
+                    if fmt.get('format_id') == format_id:
+                        format_label = format_format_label(fmt)
+                        break
+                # Если формат не найден, используем format_id как fallback
+                if not format_label:
+                    format_label = format_id
+            except Exception as e:
+                log_debug(f"Error getting format label: {e}")
+                # В случае ошибки используем format_id как fallback
+                format_label = format_id if format_id else 'Unknown format'
+        else:
             format_label = format_id if format_id else 'Unknown format'
     
     queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder, thumbnail_path, format_label)

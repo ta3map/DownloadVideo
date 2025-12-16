@@ -12,7 +12,7 @@
         <div class="loading-content">
             <h1 id="loading-title">Video Downloader</h1>
             <div class="loading-loader"></div>
-            <button id="loading-cancel-btn" class="loading-cancel-btn" style="display: none;">Cancel</button>
+            <button id="loading-cancel-btn" class="loading-cancel-btn" style="display: none;">❌ Cancel</button>
         </div>
     </div>
     
@@ -24,9 +24,10 @@
                     <input type="checkbox" id="sound-toggle" />
                     <span class="sound-toggle-icon">🎵</span>
                 </label>
-                <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle theme">
-                    <span id="theme-icon">🌙</span>
-                </button>
+                <label class="theme-toggle-label" title="Toggle theme">
+                    <input type="checkbox" id="theme-toggle-btn" />
+                    <span id="theme-icon" class="theme-toggle-icon">🌙</span>
+                </label>
             </div>
         </div>
         
@@ -54,7 +55,7 @@
         </div>
         
         <div class="button-group">
-            <button id="fetch-formats-btn" class="btn btn-primary">Get formats</button>
+            <button id="fetch-formats-btn" class="btn btn-primary">🔍 Get formats</button>
         </div>
         
         <div id="video-preview-section" class="video-preview-section" style="display: none;">
@@ -67,7 +68,7 @@
                 <select id="formats-select" size="10"></select>
             </div>
             <div class="button-group">
-                <button id="add-to-queue-btn" class="btn btn-primary">Add to queue</button>
+                <button id="add-to-queue-btn" class="btn btn-primary">➕ Add to queue</button>
             </div>
         </div>
         
@@ -75,9 +76,9 @@
             <h2>Queue:</h2>
             <div id="queue-list" class="queue-list"></div>
             <div class="button-group">
-                <button id="queue-start-btn" class="btn btn-success">Download</button>
-                <button id="queue-pause-btn" class="btn btn-warning">Pause</button>
-                <button id="queue-stop-btn" class="btn btn-danger">Stop</button>
+                <button id="queue-start-btn" class="btn btn-success">⬇️ Download</button>
+                <button id="queue-pause-btn" class="btn btn-warning">⏸️ Pause</button>
+                <button id="queue-stop-btn" class="btn btn-danger">⏹️ Stop</button>
             </div>
         </div>
         
@@ -101,9 +102,9 @@
             <h3>Delete from history</h3>
             <p>What would you like to delete?</p>
             <div class="modal-buttons">
-                <button id="delete-history-only-btn" class="btn btn-warning">History only</button>
-                <button id="delete-with-file-btn" class="btn btn-danger">History + File</button>
-                <button id="cancel-delete-btn" class="btn">Cancel</button>
+                <button id="delete-history-only-btn" class="btn btn-warning">📋 History only</button>
+                <button id="delete-with-file-btn" class="btn btn-danger">🗑️ History + File</button>
+                <button id="cancel-delete-btn" class="btn">❌ Cancel</button>
             </div>
         </div>
     </div>
