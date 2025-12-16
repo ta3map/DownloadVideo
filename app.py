@@ -174,8 +174,8 @@ def fetch_formats():
     
     def worker():
         try:
-            result = get_formats(url)
-            update_task(task_id, status='idle', formats=result['formats'], title=result['title'])
+            result = get_formats(url, THUMBNAILS_FOLDER)
+            update_task(task_id, status='idle', formats=result['formats'], title=result['title'], thumbnail_path=result.get('thumbnail_path'))
         except Exception as e:
             log_error(f"Error fetching formats for task {task_id}: {e}")
             update_task(task_id, status='error', error=str(e))
@@ -200,7 +200,8 @@ def get_formats_result(task_id):
     if task['status'] == 'idle' and 'formats' in task:
         return jsonify({
             'formats': task['formats'],
-            'title': task.get('title', '')
+            'title': task.get('title', ''),
+            'thumbnail_path': task.get('thumbnail_path')
         })
     
     return jsonify({'status': task['status']})
@@ -263,13 +264,14 @@ def start_queue_download(queue_id, queue_item):
             with active_tasks_lock:
                 del active_tasks[task_id]
             
-            # Скачиваем thumbnail
-            thumbnail_path = None
-            try:
-                video_id = str(hash(url))[:16]  # Используем хеш URL как ID
-                thumbnail_path = download_thumbnail(url, THUMBNAILS_FOLDER, video_id)
-            except Exception as e:
-                log_error(f"Error downloading thumbnail: {e}")
+            # Используем существующий thumbnail из очереди или скачиваем новый
+            thumbnail_path = queue_item.get('thumbnail_path')
+            if not thumbnail_path:
+                try:
+                    video_id = str(hash(url))[:16]  # Используем хеш URL как ID
+                    thumbnail_path = download_thumbnail(url, THUMBNAILS_FOLDER, video_id)
+                except Exception as e:
+                    log_error(f"Error downloading thumbnail: {e}")
             
             db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0], thumbnail_path)
             db.delete_queue_item(queue_id)
@@ -321,11 +323,12 @@ def queue_add():
     format_id = data.get('format_id')
     audio_only = data.get('audio_only', False)
     download_folder = data.get('download_folder', DOWNLOAD_FOLDER)
+    thumbnail_path = data.get('thumbnail_path')
     
     if not url:
         return jsonify({'error': 'URL не указан'}), 400
     
-    queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder)
+    queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder, thumbnail_path)
     return jsonify({'queue_id': queue_id})
 
 @app.route('/api/queue/list', methods=['GET'])
@@ -426,8 +429,9 @@ def delete_history_item(history_id):
     data = request.json or {}
     delete_file = data.get('delete_file', False)
     
+    history_item = db.get_history_item(history_id)
+    
     if delete_file:
-        history_item = db.get_history_item(history_id)
         if history_item and history_item.get('file_path'):
             file_path = history_item['file_path']
             if os.path.exists(file_path) and os.path.isfile(file_path):
@@ -435,6 +439,15 @@ def delete_history_item(history_id):
                     os.remove(file_path)
                 except Exception as e:
                     log_error(f"Error deleting file {file_path}: {e}")
+    
+    # Удаляем thumbnail файл если он существует
+    if history_item and history_item.get('thumbnail_path'):
+        thumbnail_path = history_item['thumbnail_path']
+        if os.path.exists(thumbnail_path) and os.path.isfile(thumbnail_path):
+            try:
+                os.remove(thumbnail_path)
+            except Exception as e:
+                log_error(f"Error deleting thumbnail {thumbnail_path}: {e}")
     
     db.delete_history_item(history_id)
     return jsonify({'status': 'deleted'})
@@ -591,6 +604,16 @@ def delete_queue_item(queue_id):
             if task_id in active_tasks:
                 active_tasks[task_id]['cancelled_flag']['value'] = True
                 del active_tasks[task_id]
+    
+    # Удаляем thumbnail файл если он существует
+    if queue_item and queue_item.get('thumbnail_path'):
+        thumbnail_path = queue_item['thumbnail_path']
+        if os.path.exists(thumbnail_path) and os.path.isfile(thumbnail_path):
+            try:
+                os.remove(thumbnail_path)
+            except Exception as e:
+                log_error(f"Error deleting thumbnail {thumbnail_path}: {e}")
+    
     db.delete_queue_item(queue_id)
     return jsonify({'status': 'deleted'})
 

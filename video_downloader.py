@@ -91,7 +91,7 @@ def get_video_info(url):
         raise Exception(f"Ошибка получения информации о видео: {e}")
 
 
-def download_thumbnail(url, thumbnail_folder, video_id=None):
+def download_thumbnail(url, thumbnail_folder, video_id=None, info=None):
     """
     Скачивает thumbnail для видео
     
@@ -99,6 +99,7 @@ def download_thumbnail(url, thumbnail_folder, video_id=None):
         url: URL видео
         thumbnail_folder: Папка для сохранения thumbnails
         video_id: ID видео для имени файла (опционально)
+        info: Уже полученная информация о видео (опционально, для избежания повторного вызова)
     
     Returns:
         Путь к скачанному thumbnail или None
@@ -106,40 +107,52 @@ def download_thumbnail(url, thumbnail_folder, video_id=None):
     try:
         os.makedirs(thumbnail_folder, exist_ok=True)
         
-        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            thumbnail_url = info.get('thumbnail')
-            
-            if not thumbnail_url:
-                return None
-            
-            # Используем video_id или генерируем из URL
-            if not video_id:
-                video_id = info.get('id') or info.get('display_id') or str(hash(url))
-            
-            # Определяем расширение из URL или используем jpg по умолчанию
-            ext = 'jpg'
-            if '.' in thumbnail_url:
-                ext = thumbnail_url.split('.')[-1].split('?')[0]
-                if ext not in ['jpg', 'jpeg', 'png', 'webp']:
-                    ext = 'jpg'
-            
-            thumbnail_filename = f"{video_id}.{ext}"
-            thumbnail_path = os.path.join(thumbnail_folder, thumbnail_filename)
-            
-            # Скачиваем thumbnail
-            import urllib.request
-            urllib.request.urlretrieve(thumbnail_url, thumbnail_path)
-            
-            log_info(f"Thumbnail downloaded: {thumbnail_path}")
-            return thumbnail_path
+        # Используем переданную информацию или получаем заново
+        if info is None:
+            with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+        
+        thumbnail_url = info.get('thumbnail')
+        
+        if not thumbnail_url:
+            return None
+        
+        # Используем video_id или генерируем из URL
+        if not video_id:
+            video_id = info.get('id') or info.get('display_id') or str(hash(url))
+        
+        # Определяем расширение из URL или используем jpg по умолчанию
+        ext = 'jpg'
+        if '.' in thumbnail_url:
+            ext = thumbnail_url.split('.')[-1].split('?')[0]
+            if ext not in ['jpg', 'jpeg', 'png', 'webp']:
+                ext = 'jpg'
+        
+        thumbnail_filename = f"{video_id}.{ext}"
+        thumbnail_path = os.path.join(thumbnail_folder, thumbnail_filename)
+        
+        # Скачиваем thumbnail
+        import urllib.request
+        urllib.request.urlretrieve(thumbnail_url, thumbnail_path)
+        
+        log_info(f"Thumbnail downloaded: {thumbnail_path}")
+        return thumbnail_path
     except Exception as e:
         log_error(f"Error downloading thumbnail for {url}: {e}")
         return None
 
 
-def get_formats(url):
-    """Получает список доступных форматов для видео"""
+def get_formats(url, thumbnail_folder=None):
+    """
+    Получает список доступных форматов для видео
+    
+    Args:
+        url: URL видео
+        thumbnail_folder: Папка для сохранения thumbnails (опционально)
+    
+    Returns:
+        Словарь с title, formats и thumbnail_path (если thumbnail_folder указан)
+    """
     try:
         info = get_video_info(url)
         video_title = info.get("title", "video")
@@ -158,10 +171,22 @@ def get_formats(url):
             }
             full_formats.append(full_fmt)
         
-        return {
+        result = {
             "title": video_title,
             "formats": full_formats
         }
+        
+        # Скачиваем thumbnail если указана папка
+        if thumbnail_folder:
+            try:
+                video_id = info.get('id') or info.get('display_id') or str(hash(url))
+                thumbnail_path = download_thumbnail(url, thumbnail_folder, video_id, info=info)
+                result["thumbnail_path"] = thumbnail_path
+            except Exception as e:
+                log_error(f"Error downloading thumbnail in get_formats: {e}")
+                result["thumbnail_path"] = None
+        
+        return result
     except Exception as e:
         log_error(f"Error getting formats for {url}: {e}")
         raise Exception(f"Ошибка получения форматов: {e}")

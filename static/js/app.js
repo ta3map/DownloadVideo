@@ -1,6 +1,7 @@
 // Глобальные переменные
 let currentFetchTaskId = null;
 let currentVideoTitle = null;
+let currentThumbnailPath = null;
 const originalWindowTitle = document.title;
 
 // Элементы DOM
@@ -13,6 +14,8 @@ const fetchFormatsBtn = document.getElementById('fetch-formats-btn');
 const formatsSection = document.getElementById('formats-section');
 const formatsSelect = document.getElementById('formats-select');
 const addToQueueBtn = document.getElementById('add-to-queue-btn');
+const videoPreviewSection = document.getElementById('video-preview-section');
+const videoPreviewItem = document.getElementById('video-preview-item');
 const queueSection = document.getElementById('queue-section');
 const queueList = document.getElementById('queue-list');
 const queueStartBtn = document.getElementById('queue-start-btn');
@@ -226,6 +229,8 @@ function setupEventListeners() {
     urlInput.addEventListener('blur', saveUIState);
     urlInput.addEventListener('input', () => {
         currentVideoTitle = null;
+        currentThumbnailPath = null;
+        hideVideoPreview();
     });
     downloadFolderInput.addEventListener('blur', saveUIState);
 }
@@ -239,6 +244,8 @@ async function handlePasteUrl() {
             urlInput.value = data.text;
             urlInput.focus();
             currentVideoTitle = null;
+            currentThumbnailPath = null;
+            hideVideoPreview();
             saveUIState();
             showStatus('URL pasted from clipboard', 'success');
         } else {
@@ -292,10 +299,14 @@ async function handleFetchFormats() {
     if (audioOnlyCheckbox.checked) {
         showStatus('Audio only mode selected. Formats not needed.', 'info');
         currentVideoTitle = null;
+        currentThumbnailPath = null;
+        hideVideoPreview();
         return;
     }
     
     currentVideoTitle = null;
+    currentThumbnailPath = null;
+    hideVideoPreview();
     fetchFormatsBtn.disabled = true;
     showLoadingOverlay('Getting formats');
 
@@ -352,6 +363,11 @@ async function checkFormatsResult() {
             });
             formatsSection.style.display = 'block';
             currentVideoTitle = data.title || null;
+            currentThumbnailPath = data.thumbnail_path || null;
+            
+            // Показываем превью видео
+            showVideoPreview(currentVideoTitle, currentThumbnailPath);
+            
             showStatus(`Formats fetched for: ${currentVideoTitle || 'video'}`, 'success');
             fetchFormatsBtn.disabled = false;
             currentFetchTaskId = null;
@@ -364,10 +380,52 @@ async function checkFormatsResult() {
         showStatus('Error: ' + error.message, 'error');
         fetchFormatsBtn.disabled = false;
         currentFetchTaskId = null;
+        hideVideoPreview();
         logErrorToBackend('checkFormatsResult', error.message, error.stack, new Date().toISOString());
     }
 }
 
+// Показ превью видео
+function showVideoPreview(title, thumbnailPath) {
+    if (!videoPreviewSection || !videoPreviewItem) return;
+    
+    videoPreviewItem.innerHTML = '';
+    
+    // Thumbnail
+    if (thumbnailPath) {
+        const thumbnail = document.createElement('img');
+        thumbnail.className = 'video-preview-thumbnail';
+        const filename = thumbnailPath.split('/').pop() || thumbnailPath.split('\\').pop();
+        thumbnail.src = `/api/thumbnail/${filename}`;
+        thumbnail.alt = title || 'Thumbnail';
+        thumbnail.onerror = function() {
+            this.style.display = 'none';
+        };
+        videoPreviewItem.appendChild(thumbnail);
+    }
+    
+    const info = document.createElement('div');
+    info.className = 'video-preview-info';
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'video-preview-title';
+    titleDiv.textContent = title || 'Video';
+    
+    info.appendChild(titleDiv);
+    videoPreviewItem.appendChild(info);
+    
+    videoPreviewSection.style.display = 'block';
+}
+
+// Скрытие превью видео
+function hideVideoPreview() {
+    if (videoPreviewSection) {
+        videoPreviewSection.style.display = 'none';
+    }
+    if (videoPreviewItem) {
+        videoPreviewItem.innerHTML = '';
+    }
+}
 
 // Показать статус
 function showStatus(message, type) {
@@ -506,11 +564,13 @@ async function handleAddToQueue() {
             title: currentVideoTitle || '',
             format_id: formatId,
             audio_only: audioOnly,
-            download_folder: downloadFolderInput.value
+            download_folder: downloadFolderInput.value,
+            thumbnail_path: currentThumbnailPath || null
         })
     });
 
     showStatus('Added to queue', 'success');
+    hideVideoPreview();
     loadQueue();
     queueSection.style.display = 'block';
 }
@@ -527,6 +587,19 @@ async function loadQueue() {
         data.queue.forEach(item => {
             const div = document.createElement('div');
             div.className = 'queue-item';
+            
+            // Thumbnail
+            if (item.thumbnail_path) {
+                const thumbnail = document.createElement('img');
+                thumbnail.className = 'queue-item-thumbnail';
+                const filename = item.thumbnail_path.split('/').pop() || item.thumbnail_path.split('\\').pop();
+                thumbnail.src = `/api/thumbnail/${filename}`;
+                thumbnail.alt = item.title || 'Thumbnail';
+                thumbnail.onerror = function() {
+                    this.style.display = 'none';
+                };
+                div.appendChild(thumbnail);
+            }
             
             const info = document.createElement('div');
             info.className = 'queue-item-info';
@@ -577,12 +650,20 @@ async function loadQueue() {
         updateWindowTitle(Math.round(avgProgress));
         progressSection.style.display = 'block';
         
+        // Скрываем overlay загрузки, так как загрузка началась
+        hideLoadingOverlay();
+        
         // Скрываем элементы формы и делаем очередь неактивной во время загрузки
         toggleFormElementsVisibility(false);
         setQueueListActive(false);
     } else {
         updateWindowTitle(null);
         progressSection.style.display = 'none';
+        
+        // Если нет активных загрузок, скрываем overlay инициализации
+        if (!hasActiveDownloads) {
+            hideLoadingOverlay();
+        }
         
         // Показываем элементы формы и делаем очередь активной когда нет активных загрузок или на паузе
         toggleFormElementsVisibility(true);
@@ -605,6 +686,7 @@ async function loadQueue() {
 
 // Запуск очереди
 async function handleQueueStart() {
+    showLoadingOverlay('Initializing download');
     await fetch('/api/queue/start', { method: 'POST' });
     showStatus('Download started', 'success');
     loadQueue();
@@ -626,6 +708,9 @@ async function handleQueueStop() {
     await fetch('/api/queue/stop', { method: 'POST' });
     showStatus('Download stopped', 'info');
     stopProgressUpdate();
+    
+    // Скрываем overlay загрузки
+    hideLoadingOverlay();
     
     // При остановке показываем элементы формы и делаем очередь активной
     toggleFormElementsVisibility(true);

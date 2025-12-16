@@ -252,6 +252,42 @@ input[type="checkbox"] {
     box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
 }
 
+.video-preview-section {
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.video-preview-item {
+    padding: 15px;
+    background: var(--queue-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.video-preview-thumbnail {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+
+.video-preview-info {
+    flex: 1;
+}
+
+.video-preview-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    transition: color 0.3s ease;
+}
+
 .formats-section {
     margin-bottom: 20px;
 }
@@ -387,6 +423,15 @@ input[type="checkbox"] {
 
 .queue-item-info {
     flex: 1;
+}
+
+.queue-item-thumbnail {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
 }
 
 .queue-item-title {

@@ -43,9 +43,16 @@ class Database:
                 download_folder TEXT,
                 status TEXT DEFAULT 'pending',
                 task_id TEXT,
+                thumbnail_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Добавляем колонку thumbnail_path если её нет (для существующих БД)
+        try:
+            cursor.execute('ALTER TABLE download_queue ADD COLUMN thumbnail_path TEXT')
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ui_state (
@@ -65,12 +72,12 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
     
-    def add_to_queue(self, url, title, format_id, audio_only, download_folder):
+    def add_to_queue(self, url, title, format_id, audio_only, download_folder, thumbnail_path=None):
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO download_queue (url, title, format_id, audio_only, download_folder)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (url, title, format_id, 1 if audio_only else 0, download_folder))
+            INSERT INTO download_queue (url, title, format_id, audio_only, download_folder, thumbnail_path)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (url, title, format_id, 1 if audio_only else 0, download_folder, thumbnail_path))
         self.conn.commit()
         return cursor.lastrowid
     
