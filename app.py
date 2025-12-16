@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QClipboard
 from video_downloader import (
     get_formats, download_video, get_default_download_dir,
-    CustomLogger, check_ffmpeg, download_thumbnail
+    CustomLogger, check_ffmpeg, download_thumbnail, format_format_label
 )
 from logger import log_frontend_error, log_info, log_error, log_warning, log_debug
 from database import Database
@@ -273,7 +273,9 @@ def start_queue_download(queue_id, queue_item):
                 except Exception as e:
                     log_error(f"Error downloading thumbnail: {e}")
             
-            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0], thumbnail_path)
+            # Получаем format_label из очереди
+            format_label = queue_item.get('format_label')
+            db.add_to_history(url, title, format_id, audio_only, 'finished', final_file[0], thumbnail_path, format_label)
             db.delete_queue_item(queue_id)
             start_next_queue_item()
         except Exception as e:
@@ -281,7 +283,9 @@ def start_queue_download(queue_id, queue_item):
                 if task_id in active_tasks:
                     del active_tasks[task_id]
             status = 'cancelled' if 'cancelled' in str(e).lower() else 'error'
-            db.add_to_history(url, title, format_id, audio_only, status, '')
+            # Получаем format_label из очереди
+            format_label = queue_item.get('format_label')
+            db.add_to_history(url, title, format_id, audio_only, status, '', None, format_label)
             db.delete_queue_item(queue_id)
             start_next_queue_item()
     
@@ -328,7 +332,28 @@ def queue_add():
     if not url:
         return jsonify({'error': 'URL не указан'}), 400
     
-    queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder, thumbnail_path)
+    # Формируем format_label
+    format_label = None
+    if audio_only:
+        format_label = 'Audio only'
+    elif format_id:
+        # Получаем форматы для формирования label
+        try:
+            result = get_formats(url)
+            formats = result.get('formats', [])
+            for fmt in formats:
+                if fmt.get('format_id') == format_id:
+                    format_label = format_format_label(fmt)
+                    break
+            # Если формат не найден, используем format_id как fallback
+            if not format_label:
+                format_label = format_id
+        except Exception as e:
+            log_debug(f"Error getting format label: {e}")
+            # В случае ошибки используем format_id как fallback
+            format_label = format_id if format_id else 'Unknown format'
+    
+    queue_id = db.add_to_queue(url, title, format_id, audio_only, download_folder, thumbnail_path, format_label)
     return jsonify({'queue_id': queue_id})
 
 @app.route('/api/queue/list', methods=['GET'])

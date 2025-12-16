@@ -23,6 +23,7 @@ class Database:
                 status TEXT,
                 file_path TEXT,
                 thumbnail_path TEXT,
+                format_label TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -30,6 +31,12 @@ class Database:
         # Добавляем колонку thumbnail_path если её нет (для существующих БД)
         try:
             cursor.execute('ALTER TABLE download_history ADD COLUMN thumbnail_path TEXT')
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
+        
+        # Добавляем колонку format_label если её нет (для существующих БД)
+        try:
+            cursor.execute('ALTER TABLE download_history ADD COLUMN format_label TEXT')
         except sqlite3.OperationalError:
             pass  # Колонка уже существует
         
@@ -44,6 +51,7 @@ class Database:
                 status TEXT DEFAULT 'pending',
                 task_id TEXT,
                 thumbnail_path TEXT,
+                format_label TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -51,6 +59,12 @@ class Database:
         # Добавляем колонку thumbnail_path если её нет (для существующих БД)
         try:
             cursor.execute('ALTER TABLE download_queue ADD COLUMN thumbnail_path TEXT')
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
+        
+        # Добавляем колонку format_label если её нет (для существующих БД)
+        try:
+            cursor.execute('ALTER TABLE download_queue ADD COLUMN format_label TEXT')
         except sqlite3.OperationalError:
             pass  # Колонка уже существует
         
@@ -63,21 +77,21 @@ class Database:
         
         self.conn.commit()
     
-    def add_to_history(self, url, title, format_id, audio_only, status, file_path, thumbnail_path=None):
+    def add_to_history(self, url, title, format_id, audio_only, status, file_path, thumbnail_path=None, format_label=None):
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO download_history (url, title, format_id, audio_only, status, file_path, thumbnail_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (url, title, format_id, 1 if audio_only else 0, status, file_path, thumbnail_path))
+            INSERT INTO download_history (url, title, format_id, audio_only, status, file_path, thumbnail_path, format_label)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (url, title, format_id, 1 if audio_only else 0, status, file_path, thumbnail_path, format_label))
         self.conn.commit()
         return cursor.lastrowid
     
-    def add_to_queue(self, url, title, format_id, audio_only, download_folder, thumbnail_path=None):
+    def add_to_queue(self, url, title, format_id, audio_only, download_folder, thumbnail_path=None, format_label=None):
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO download_queue (url, title, format_id, audio_only, download_folder, thumbnail_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (url, title, format_id, 1 if audio_only else 0, download_folder, thumbnail_path))
+            INSERT INTO download_queue (url, title, format_id, audio_only, download_folder, thumbnail_path, format_label)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (url, title, format_id, 1 if audio_only else 0, download_folder, thumbnail_path, format_label))
         self.conn.commit()
         return cursor.lastrowid
     

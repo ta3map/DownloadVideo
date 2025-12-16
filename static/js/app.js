@@ -356,48 +356,8 @@ async function checkFormatsResult() {
             data.formats.forEach((fmt, index) => {
                 const option = document.createElement('option');
                 
-                // Формируем понятную метку разрешения
-                let resolutionLabel = '';
-                if (fmt.height) {
-                    const height = fmt.height;
-                    if (height >= 2160) {
-                        resolutionLabel = '4K (2160p)';
-                    } else if (height >= 1440) {
-                        resolutionLabel = '1440p';
-                    } else if (height >= 1080) {
-                        resolutionLabel = '1080p';
-                    } else if (height >= 720) {
-                        resolutionLabel = '720p';
-                    } else if (height >= 480) {
-                        resolutionLabel = '480p';
-                    } else if (height >= 360) {
-                        resolutionLabel = '360p';
-                    } else if (height >= 240) {
-                        resolutionLabel = '240p';
-                    } else if (height >= 144) {
-                        resolutionLabel = '144p';
-                    } else {
-                        resolutionLabel = `${height}p`;
-                    }
-                } else {
-                    resolutionLabel = fmt.resolution || 'unknown';
-                }
-                
-                // Формируем полную метку
-                const parts = [resolutionLabel];
-                if (fmt.ext && fmt.ext !== 'unknown') {
-                    parts.push(fmt.ext.toUpperCase());
-                }
-                if (fmt.format_note) {
-                    parts.push(fmt.format_note);
-                }
-                
-                const hasFfmpeg = fmt.format && typeof fmt.format === 'string' && fmt.format.includes('+');
-                if (hasFfmpeg) {
-                    parts.push('+ffmpeg');
-                }
-                
-                const label = parts.join(' | ');
+                // Используем готовый label с бэкенда (сформирован функцией format_format_label)
+                const label = fmt.label || fmt.format_id;
                 option.textContent = label;
                 option.value = fmt.format_id;
                 formatsSelect.appendChild(option);
@@ -821,7 +781,20 @@ async function loadHistory() {
             details.className = 'history-item-details';
             const statusText = item.status === 'finished' ? 'Completed' : 
                              item.status === 'error' ? 'Error' : 'Cancelled';
-            details.textContent = `${statusText} | ${new Date(item.created_at).toLocaleString()}`;
+            
+            // Показываем формат вместо времени
+            let formatText = '';
+            if (item.audio_only) {
+                formatText = 'Audio only';
+            } else if (item.format_label) {
+                formatText = item.format_label;
+            } else if (item.format_id) {
+                formatText = item.format_id;
+            } else {
+                formatText = 'Unknown format';
+            }
+            
+            details.textContent = `${statusText} | ${formatText}`;
 
             info.appendChild(title);
             info.appendChild(details);

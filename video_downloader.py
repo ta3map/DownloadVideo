@@ -49,6 +49,60 @@ def check_ffmpeg():
         return False
 
 
+def format_format_label(fmt):
+    """
+    Форматирует строку формата для отображения (как в списке форматов)
+    
+    Args:
+        fmt: Словарь с информацией о формате (height, ext, format_note, format)
+    
+    Returns:
+        Отформатированная строка формата
+    """
+    # Формируем понятную метку разрешения
+    resolution_label = ''
+    height = fmt.get('height')
+    if height and height > 0:
+        if height >= 2160:
+            resolution_label = '4K (2160p)'
+        elif height >= 1440:
+            resolution_label = '1440p'
+        elif height >= 1080:
+            resolution_label = '1080p'
+        elif height >= 720:
+            resolution_label = '720p'
+        elif height >= 480:
+            resolution_label = '480p'
+        elif height >= 360:
+            resolution_label = '360p'
+        elif height >= 240:
+            resolution_label = '240p'
+        elif height >= 144:
+            resolution_label = '144p'
+        else:
+            resolution_label = f'{height}p'
+    else:
+        resolution_label = fmt.get('resolution', 'unknown')
+    
+    # Формируем полную метку
+    parts = [resolution_label]
+    if fmt.get('ext') and fmt['ext'] != 'unknown':
+        parts.append(fmt['ext'].upper())
+    if fmt.get('format_note'):
+        parts.append(fmt['format_note'])
+    
+    # Проверяем наличие ffmpeg (формат может быть строкой вида "123+456" или числом)
+    format_str = fmt.get('format')
+    if format_str:
+        # Преобразуем в строку если нужно
+        if not isinstance(format_str, str):
+            format_str = str(format_str)
+        if '+' in format_str:
+            parts.append('+ffmpeg')
+    
+    return ' | '.join(parts)
+
+
 class CustomLogger:
     """Кастомный логгер для yt-dlp с перехватом финального файла"""
     def __init__(self, final_file_callback=None):
@@ -210,6 +264,9 @@ def get_formats(url, thumbnail_folder=None):
             else:
                 format_info["resolution"] = f"{height}p"
             
+            # Добавляем отформатированную метку используя функцию format_format_label
+            format_info["label"] = format_format_label(format_info)
+            
             video_formats.append(format_info)
         
         # Группируем по разрешению и выбираем лучший формат для каждого
@@ -290,7 +347,8 @@ def get_formats(url, thumbnail_folder=None):
                 "height": best_format["height"],
                 "ext": best_format["ext"],
                 "format_note": best_format.get("format_note", ""),
-                "format": best_format["format"]
+                "format": best_format.get("format", ""),
+                "label": best_format.get("label", "")  # Копируем уже созданный label
             }
             
             # Добавляем информацию о необходимости мерджа
