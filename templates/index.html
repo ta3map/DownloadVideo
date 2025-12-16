@@ -12,15 +12,22 @@
         <div class="loading-content">
             <h1 id="loading-title">Video Downloader</h1>
             <div class="loading-loader"></div>
+            <button id="loading-cancel-btn" class="loading-cancel-btn" style="display: none;">Cancel</button>
         </div>
     </div>
     
     <div class="container">
         <div class="header-container">
             <h1>Video Downloader</h1>
-            <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle theme">
-                <span id="theme-icon">🌙</span>
-            </button>
+            <div class="header-controls">
+                <label class="sound-toggle-label" title="Play completion sound">
+                    <input type="checkbox" id="sound-toggle" />
+                    <span class="sound-toggle-icon">🎵</span>
+                </label>
+                <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle theme">
+                    <span id="theme-icon">🌙</span>
+                </button>
+            </div>
         </div>
         
         <div class="form-group">

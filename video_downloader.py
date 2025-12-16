@@ -470,7 +470,7 @@ def create_progress_hook(progress_callback, paused_flag, cancelled_flag, final_f
 
 def download_video(url, format_id, download_folder, audio_only=False, 
                    progress_callback=None, logger=None, paused_flag=None, 
-                   cancelled_flag=None, final_file_callback=None):
+                   cancelled_flag=None, final_file_callback=None, retry_status_callback=None):
     """
     Скачивает видео с указанными параметрами
     
@@ -484,6 +484,7 @@ def download_video(url, format_id, download_folder, audio_only=False,
         paused_flag: dict с флагом паузы {'value': bool}
         cancelled_flag: dict с флагом отмены {'value': bool}
         final_file_callback: Функция для сохранения пути к финальному файлу
+        retry_status_callback: Функция для обновления статуса повторных попыток (принимает строку или None)
     """
     if paused_flag is None:
         paused_flag = {"value": False}
@@ -524,7 +525,9 @@ def download_video(url, format_id, download_folder, audio_only=False,
         try:
             info = get_video_info(url)
             formats = info.get("formats", [])
-            selected_format = next((f for f in formats if f.get("format_id") == format_id), None)
+            # Приводим format_id к строке для сравнения, т.к. в YouTube API format_id может быть и строкой и числом
+            format_id_str = str(format_id) if format_id else None
+            selected_format = next((f for f in formats if str(f.get("format_id")) == format_id_str), None)
             if selected_format:
                 needs_conversion = (
                     selected_format.get("vcodec", "none") != "none"
@@ -536,16 +539,63 @@ def download_video(url, format_id, download_folder, audio_only=False,
         except Exception:
             pass
     
-    try:
-        log_info(f"Starting download: url={url}, format_id={format_id}, audio_only={audio_only}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        log_info(f"Download completed successfully: {url}")
-        return True
-    except Exception as e:
-        if "cancelled" in str(e).lower():
-            log_info(f"Download cancelled by user: {url}")
-            raise Exception("Download cancelled by user.")
-        log_error(f"Download error for {url}: {e}")
-        raise e
+    # Повторные попытки при таймаутах и сетевых ошибках
+    max_retries = 3
+    retry_delay = 2  # секунды между попытками
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                retry_msg = f"Retry attempt {attempt}/{max_retries}"
+                log_info(f"{retry_msg} for {url}")
+                if retry_status_callback:
+                    retry_status_callback(retry_msg)
+            else:
+                log_info(f"Starting download: url={url}, format_id={format_id}, audio_only={audio_only}")
+                if retry_status_callback:
+                    retry_status_callback("Initializing download...")
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            log_info(f"Download completed successfully: {url}")
+            if retry_status_callback:
+                retry_status_callback(None)  # Очищаем статус при успехе
+            return True
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Проверяем на отмену пользователем - не повторяем
+            if "cancelled" in error_str:
+                log_info(f"Download cancelled by user: {url}")
+                if retry_status_callback:
+                    retry_status_callback(None)
+                raise Exception("Download cancelled by user.")
+            
+            # Проверяем, является ли это ошибкой таймаута или сетевой ошибкой
+            is_retryable = any(keyword in error_str for keyword in [
+                'timeout', 'timed out', 'handshake operation timed out',
+                'connection', 'network', 'socket', 'ssl', 'http error',
+                'unable to download video data'
+            ])
+            
+            if is_retryable and attempt < max_retries:
+                retry_msg = f"Connection timeout, retrying ({attempt}/{max_retries})..."
+                log_warning(f"Download error (attempt {attempt}/{max_retries}): {e}")
+                log_info(f"Retrying in {retry_delay} seconds...")
+                if retry_status_callback:
+                    retry_status_callback(retry_msg)
+                time.sleep(retry_delay)
+                # Увеличиваем задержку для следующей попытки
+                retry_delay *= 2
+                continue
+            else:
+                # Не повторяемая ошибка или исчерпаны попытки
+                if attempt >= max_retries:
+                    log_error(f"Download failed after {max_retries} attempts: {url}")
+                    if retry_status_callback:
+                        retry_status_callback(f"Failed after {max_retries} attempts")
+                log_error(f"Download error for {url}: {e}")
+                if retry_status_callback:
+                    retry_status_callback(None)
+                raise e
 

@@ -175,9 +175,26 @@ def fetch_formats():
     
     def worker():
         try:
+            # Проверяем отмену перед началом
+            task = get_task(task_id)
+            if task and task.get('cancelled'):
+                update_task(task_id, status='cancelled')
+                return
+            
             result = get_formats(url, THUMBNAILS_FOLDER)
+            
+            # Проверяем отмену после получения форматов
+            task = get_task(task_id)
+            if task and task.get('cancelled'):
+                update_task(task_id, status='cancelled')
+                return
+            
             update_task(task_id, status='idle', formats=result['formats'], title=result['title'], thumbnail_path=result.get('thumbnail_path'))
         except Exception as e:
+            task = get_task(task_id)
+            if task and task.get('cancelled'):
+                update_task(task_id, status='cancelled')
+                return
             log_error(f"Error fetching formats for task {task_id}: {e}")
             update_task(task_id, status='error', error=str(e))
     
@@ -198,6 +215,9 @@ def get_formats_result(task_id):
     if task['status'] == 'error':
         return jsonify({'error': task.get('error', 'Неизвестная ошибка')}), 500
     
+    if task['status'] == 'cancelled':
+        return jsonify({'status': 'cancelled'})
+    
     if task['status'] == 'idle' and 'formats' in task:
         return jsonify({
             'formats': task['formats'],
@@ -206,6 +226,24 @@ def get_formats_result(task_id):
         })
     
     return jsonify({'status': task['status']})
+
+
+@app.route('/api/cancel-fetch-formats/<task_id>', methods=['POST'])
+def cancel_fetch_formats(task_id):
+    """Отмена получения форматов"""
+    task = get_task(task_id)
+    if not task:
+        return jsonify({'error': 'Задача не найдена'}), 404
+    
+    update_task(task_id, cancelled=True)
+    
+    # Пытаемся остановить поток, если он еще работает
+    thread = task.get('thread')
+    if thread and thread.is_alive():
+        # Поток daemon, так что он завершится сам, но мы помечаем задачу как отмененную
+        pass
+    
+    return jsonify({'status': 'cancelled'})
 
 
 def start_queue_download(queue_id, queue_item):
@@ -237,7 +275,8 @@ def start_queue_download(queue_id, queue_item):
             'progress': 0,
             'paused': False,
             'paused_flag': paused_flag,
-            'cancelled_flag': cancelled_flag
+            'cancelled_flag': cancelled_flag,
+            'retry_status': None  # Статус повторных попыток
         }
     
     def progress_callback(percent):
@@ -246,6 +285,12 @@ def start_queue_download(queue_id, queue_item):
     
     def final_file_callback(filename):
         final_file[0] = filename
+    
+    def retry_status_callback(status):
+        """Обновляет статус повторных попыток"""
+        with active_tasks_lock:
+            if task_id in active_tasks:
+                active_tasks[task_id]['retry_status'] = status
     
     logger = CustomLogger(final_file_callback=final_file_callback)
     
@@ -260,7 +305,8 @@ def start_queue_download(queue_id, queue_item):
                 logger=logger,
                 paused_flag=paused_flag,
                 cancelled_flag=cancelled_flag,
-                final_file_callback=final_file_callback
+                final_file_callback=final_file_callback,
+                retry_status_callback=retry_status_callback
             )
             with active_tasks_lock:
                 del active_tasks[task_id]
@@ -369,6 +415,7 @@ def queue_list():
                 task = active_tasks[item['task_id']]
                 item['progress'] = task['progress']
                 item['paused'] = task['paused']
+                item['retry_status'] = task.get('retry_status')
     return jsonify({'queue': queue})
 
 @app.route('/api/queue/start', methods=['POST'])

@@ -32,10 +32,12 @@ const deleteWithFileBtn = document.getElementById('delete-with-file-btn');
 const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const themeIcon = document.getElementById('theme-icon');
+const soundToggle = document.getElementById('sound-toggle');
 const htmlElement = document.documentElement;
 const loadingScreen = document.getElementById('loading-screen');
 const loadingTitle = document.getElementById('loading-title');
 const loadingContent = loadingScreen ? loadingScreen.querySelector('.loading-content') : null;
+const loadingCancelBtn = document.getElementById('loading-cancel-btn');
 
 // Отправка ошибки на бэкенд
 async function logErrorToBackend(type, message, stack, timestamp) {
@@ -86,12 +88,16 @@ function hideLoading() {
 }
 
 // Показ overlay загрузки (переиспользует loading-screen)
-function showLoadingOverlay(text = 'Getting formats') {
+function showLoadingOverlay(text = 'Getting formats', showCancel = false) {
     if (loadingScreen && loadingTitle) {
         loadingTitle.textContent = text;
         loadingScreen.classList.add('loading-overlay');
         loadingScreen.style.display = 'flex';
         loadingScreen.classList.remove('hidden');
+        // Показываем кнопку отмены если нужно
+        if (loadingCancelBtn) {
+            loadingCancelBtn.style.display = showCancel ? 'block' : 'none';
+        }
     }
 }
 
@@ -106,6 +112,10 @@ function hideLoadingOverlay() {
                 // Восстанавливаем оригинальный текст
                 if (loadingTitle) {
                     loadingTitle.textContent = 'Video Downloader';
+                }
+                // Скрываем кнопку отмены
+                if (loadingCancelBtn) {
+                    loadingCancelBtn.style.display = 'none';
                 }
             }
         }, 500);
@@ -218,6 +228,9 @@ async function loadConfig() {
 // Настройка обработчиков событий
 function setupEventListeners() {
     themeToggleBtn.addEventListener('click', handleThemeToggle);
+    soundToggle.addEventListener('change', () => {
+        saveUIState();
+    });
     pasteUrlBtn.addEventListener('click', handlePasteUrl);
     selectFolderBtn.addEventListener('click', handleSelectFolder);
     fetchFormatsBtn.addEventListener('click', handleFetchFormats);
@@ -225,6 +238,9 @@ function setupEventListeners() {
     queueStartBtn.addEventListener('click', handleQueueStart);
     queuePauseBtn.addEventListener('click', handleQueuePause);
     queueStopBtn.addEventListener('click', handleQueueStop);
+    if (loadingCancelBtn) {
+        loadingCancelBtn.addEventListener('click', handleLoadingCancel);
+    }
     deleteHistoryOnlyBtn.addEventListener('click', () => {
         if (currentDeleteHistoryId) {
             deleteHistoryItem(currentDeleteHistoryId, false);
@@ -327,7 +343,7 @@ async function handleFetchFormats() {
     currentThumbnailPath = null;
     hideVideoPreview();
     fetchFormatsBtn.disabled = true;
-    showLoadingOverlay('Getting formats');
+    showLoadingOverlay('Getting formats', true);
 
     try {
         const response = await fetch('/api/fetch-formats', {
@@ -389,6 +405,12 @@ async function checkFormatsResult() {
             showVideoPreview(currentVideoTitle, currentThumbnailPath);
             
             showStatus(`Formats fetched for: ${currentVideoTitle || 'video'}`, 'success');
+            fetchFormatsBtn.disabled = false;
+            currentFetchTaskId = null;
+        } else if (data.status === 'cancelled') {
+            // Задача отменена
+            hideLoadingOverlay();
+            showStatus('Format fetching cancelled', 'info');
             fetchFormatsBtn.disabled = false;
             currentFetchTaskId = null;
         } else if (data.status === 'fetching') {
@@ -470,6 +492,25 @@ function updateWindowTitle(progress) {
     }
 }
 
+// Воспроизведение звука завершения загрузки
+function playCompletionSound() {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+}
+
 // Управление видимостью элементов выше очереди
 function toggleFormElementsVisibility(show) {
     const container = document.querySelector('.container');
@@ -533,7 +574,8 @@ async function saveUIState() {
         format_id: formatsSelect.value,
         audio_only: audioOnlyCheckbox.checked,
         download_folder: downloadFolderInput.value,
-        formats_visible: formatsSection.style.display !== 'none'
+        formats_visible: formatsSection.style.display !== 'none',
+        sound_enabled: soundToggle.checked
     };
     await fetch('/api/ui-state', {
         method: 'POST',
@@ -553,6 +595,7 @@ async function loadUIState() {
     if (state.download_folder) downloadFolderInput.value = state.download_folder;
     if (state.formats_visible === 'true') formatsSection.style.display = 'block';
     if (state.audio_only === 'true') handleAudioOnlyChange();
+    if (state.sound_enabled === 'true') soundToggle.checked = true;
 }
 
 // Добавление в очередь
@@ -657,15 +700,24 @@ async function loadQueue() {
     // Проверяем, есть ли загрузки с прогрессом >= 1%
     const hasProgress = activeProgresses.length > 0 && activeProgresses.some(progress => progress >= 1);
     
+    // Проверяем наличие retry_status для обновления overlay
+    const retryStatus = data.queue.find(item => item.retry_status && item.status === 'downloading')?.retry_status;
+    
     if (activeProgresses.length > 0 && hasActiveDownloads) {
         const avgProgress = activeProgresses.reduce((a, b) => a + b, 0) / activeProgresses.length;
         updateProgress(avgProgress);
         updateWindowTitle(Math.round(avgProgress));
         progressSection.style.display = 'block';
         
-        // Скрываем overlay загрузки только когда прогресс >= 1%
-        if (hasProgress) {
+        // Скрываем overlay загрузки когда прогресс >= 1% и нет retry_status
+        if (hasProgress && !retryStatus) {
             hideLoadingOverlay();
+        } else if (retryStatus) {
+            // Показываем overlay с retry_status если он есть
+            showLoadingOverlay(retryStatus, true);
+        } else if (!hasProgress) {
+            // Показываем overlay при инициализации (нет прогресса)
+            showLoadingOverlay('Initializing download...', true);
         }
         
         // Скрываем элементы формы и делаем очередь неактивной во время загрузки
@@ -691,7 +743,14 @@ async function loadQueue() {
         // Убеждаемся, что все элементы показаны
         toggleFormElementsVisibility(true);
         setQueueListActive(true);
+        
+        // Воспроизводим звук только при переходе из активной загрузки в завершенную
+        if (hadActiveDownloads && soundToggle.checked) {
+            playCompletionSound();
+        }
     }
+    
+    hadActiveDownloads = hasActiveDownloads;
     
     if (data.queue.length < previousQueueLength) {
         loadHistory();
@@ -701,7 +760,7 @@ async function loadQueue() {
 
 // Запуск очереди
 async function handleQueueStart() {
-    showLoadingOverlay('Initializing download');
+    showLoadingOverlay('Initializing download...', true);
     await fetch('/api/queue/start', { method: 'POST' });
     showStatus('Download started', 'success');
     loadQueue();
@@ -734,9 +793,29 @@ async function handleQueueStop() {
     loadQueue();
 }
 
+// Отмена инициализации загрузки или сбора форматов
+async function handleLoadingCancel() {
+    // Проверяем, есть ли активная задача сбора форматов
+    if (currentFetchTaskId) {
+        try {
+            await fetch(`/api/cancel-fetch-formats/${currentFetchTaskId}`, { method: 'POST' });
+            currentFetchTaskId = null;
+            hideLoadingOverlay();
+            fetchFormatsBtn.disabled = false;
+            showStatus('Format fetching cancelled', 'info');
+        } catch (error) {
+            logErrorToBackend('cancelFetchFormats', error.message, error.stack, new Date().toISOString());
+        }
+    } else {
+        // Отменяем загрузку
+        await handleQueueStop();
+    }
+}
+
 // Обновление прогресса
 let progressUpdateInterval = null;
 let previousQueueLength = 0;
+let hadActiveDownloads = false;
 
 function startProgressUpdate() {
     if (progressUpdateInterval) return;
